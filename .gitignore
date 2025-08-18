@@ -210,3 +210,5 @@ plan.txt
 learning/
 .DS_Store
 credentials.json
+token.json
+.json
