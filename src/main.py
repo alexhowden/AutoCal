@@ -34,7 +34,7 @@ def cal_auth():
 			flow = InstalledAppFlow.from_client_secrets_file(
 				'credentials.json', SCOPES
 			)
-		creds = flow.run_local_server(port=0)
+			creds = flow.run_local_server(port=0)
 
 	with open('token.json', 'w') as token:
 		token.write(creds.to_json())
@@ -45,70 +45,40 @@ class AgentState(TypedDict):
 	messages: Annotated[Sequence[BaseMessage], add_messages]
 
 @tool
-def add(a: int, b: int):
-	'''This node adds two numbers'''
-	return a + b
-@tool
-def subtract(a: int, b: int):
-	'''This node subtracts two numbers'''
-	return a - b
-@tool
-def multiply(a: int, b: int):
-	'''This node multiplies two numbers'''
-	return a * b
-@tool
-def rand_num(a: int, b: int):
-	'''This node returns a random number'''
-	return random.randint(a, b)
-@tool
-def cal_view_events(num_events: int):
-	'''	Prints the start and name of the next (num_events) events on the user's calendar. Default to 10 if no number specified.'''
+def cal_view_events(maxResults: int, timeMin: str):
+	'''Returns next (maxResults) events on the user's calendar starting at (timeMin, RFC3339 format). Default to 10 results if no number specified.'''
+
 	creds = cal_auth()
 
 	try:
 		service = build('calendar', 'v3', credentials=creds)
 
-		now = datetime.datetime.now(tz=datetime.timezone.utc).isoformat()
-
-		events_result = (
-			service.events()
-			.list(
-				calendarId='primary',
-				timeMin=now,
-				maxResults=10,
-				singleEvents=True,
-				orderBy='startTime',
-			)
-			.execute()
-		)
-		events = events_result.get('items', [])
+		events = service.events().list(
+			calendarId='primary',
+			timeMin=timeMin,
+			maxResults=maxResults,
+			singleEvents=True,
+			orderBy='startTime'
+		).execute()
 
 		if not events:
 			return 'No upcoming events found.'
 
 		return events
 
-		# formatted_events = []
-
-		# for event in events:
-		# 	start = event['start'].get('dateTime', event['start'].get('date'))
-		# 	summary = event['summary']
-		# 	formatted_events.append(event)
-
-		# return formatted_events
-
 	except HttpError as error:
 		return f'An error occurred: {error}'
+
 @tool
-def cal_add_event(summary: str, location: str, description: str, start_time: str, end_time: str, timezone: str, recurrence: List[str], attendees: List[Dict[str, str]]):
+def cal_add_event(summary: str, location: str, description: str, timeMin: str, timeMax: str, timezone: str, recurrence: List[str], attendees: List[Dict[str, str]]):
 	'''
 	This node creates a google calendar event with the specified information.
 	Clarify for critical fields, otherwise it's ok if you leave certain fields blank.
 	summary: title of the event, critical
 	location: location of the event, not critical
 	description: description of event, leave blank unless user specifies details such as room number, attire, reminders, etc
-	start_time: starting time of event, in the form '2015-05-28T09:00:00-07:00', critical
-	end_time: same deal as start_time, critical
+	timeMin: starting time of event using the RFC3339 format, critical
+	timeMax: ending time of event using RFC3339 format, set to one hour after timeMin if unspecified
 	timezone: unless specified it's going to be 'America/New_York'
 	recurrence: recurrences, follows the iCalendar (RFC 5545) standard, use when applicable
 	attendees: list of dictionaries of attendees (emails), here's an example: [
@@ -116,21 +86,22 @@ def cal_add_event(summary: str, location: str, description: str, start_time: str
 			{'email': 'sbrin@example.com'},
 		], will usually be empty
 	'''
+
 	creds = cal_auth()
 
 	try:
 		service = build('calendar', 'v3', credentials=creds)
 
-		event = {
+		body = {
 			'summary': summary,
 			'location': location,
 			'description': description,
 			'start': {
-				'dateTime': start_time,
+				'dateTime': timeMin,
 				'timeZone': timezone,
 			},
 			'end': {
-				'dateTime': end_time,
+				'dateTime': timeMax,
 				'timeZone': timezone,
 			},
 			'recurrence': recurrence,
@@ -144,25 +115,86 @@ def cal_add_event(summary: str, location: str, description: str, start_time: str
 			},
 		}
 
-		event = service.events().insert(calendarId='primary', body=event).execute()
+		event = service.events().insert(calendarId='primary', body=body).execute()
 		return f'Event created: {event}'
 
 	except HttpError as error:
 		return f'An error occurred: {error}'
 
+# @tool
+# def cal_check_availability(start: str, end: str, timezone: str):
+# 	'''This node checks calendar availability. 'start' and 'end' are of RFC3339 format.'''
+
+# 	creds = cal_auth()
+
+# 	try:
+# 		service = build('calendar', 'v3', credentials=creds)
+
+# 		body = {
+# 			'timeMin': start,
+# 			'timeMax': end,
+# 			'timeZone': timezone,
+# 			# 'groupExpansionMax': , (max num of cal ids)
+# 			# 'calendarExpansionMax': , (max num of calendars)
+# 			'items': [{'id': 'primary'}]
+# 		}
+
+# 		events = service.freebusy().query(body=body).execute()
+
+# 		return events
+
+# 	except HttpError as error:
+# 		return f'An error occurred: {error}'
+
+@tool
+def cal_get_event(eventId: str):
+	'''This node retrieves an existing google calendar event using its eventId'''
+
+	creds = cal_auth()
+
+	try:
+		service = build('calendar', 'v3', credentials=creds)
+
+		event = service.events().get(calendarId='primary', eventId=eventId).execute()
+
+		return event
+
+	except HttpError as error:
+		return f'An error occurred: {error}'
+
+# @tool
+# def cal_edit_event(eventId: str):
+# 	'''This node edits an existing google calendar event using the eventId'''
+
+# 	creds = cal_auth()
+
+# 	try:
+# 		service = build('calendar', 'v3', credentials=creds)
+
+# 		body = {
+
+# 		}
+
+# 		events = service.events().update(calendarId='primary', eventId=eventId, body=body).execute()
+
+# 		return events
+
+# 	except HttpError as error:
+# 		return f'An error occurred: {error}'
+
 tavily_search = TavilySearch()
 
-tools = [add, subtract, multiply, rand_num, tavily_search, cal_view_events, cal_add_event]
+tools = [tavily_search, cal_view_events, cal_add_event, cal_get_event]
 
 llm = ChatGoogleGenerativeAI(
-    # model='gemini-2.0-flash-lite',
-    model='gemini-2.5-flash',
+    model='gemini-2.0-flash-lite',
+    # model='gemini-2.5-flash',
     temperature=0
 ).bind_tools(tools)
 
 def model_call(state: AgentState) -> AgentState:
 	now = datetime.datetime.now(tz=datetime.timezone.utc).isoformat()
-	system_prompt = SystemMessage(content=f'You are my AI assistant, please answer my query to the best of your ability. For calendar-related inquiries, only clarify on critical fields, otherwise do your best without. They will know what they want. Here is the current date and time as a reference point: {now}')
+	system_prompt = SystemMessage(content=f'You are an AI agent, primarily centered around google calendar (scheduling, checking availability, etc.). Use the given tools to best support the user. You should also function as a regular chatbot and match the energy of the user. For calendar-related requests, only clarify on critical fields, otherwise do your best without. Before creating events, check for conficting events and inform the user of anything that falls within 30 minutes of the new event. Here is the current date and time as a reference point: {now}')
 	response = llm.invoke([system_prompt] + state['messages'])
 	return {'messages': [response]}
 
