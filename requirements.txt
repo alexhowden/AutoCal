@@ -1,3 +1,5 @@
 dotenv
 langgraph
 langchain
+langchain-tavily
+langchain-google-genai
