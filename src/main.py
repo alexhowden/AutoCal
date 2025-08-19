@@ -8,6 +8,7 @@ from langgraph.graph import StateGraph, END
 from langgraph.prebuilt import ToolNode
 import random
 from langchain_tavily import TavilySearch
+from langgraph.checkpoint.memory import InMemorySaver
 
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
@@ -70,21 +71,27 @@ def cal_view_events(maxResults: int, timeMin: str):
 		return f'An error occurred: {error}'
 
 @tool
-def cal_add_event(summary: str, location: str, description: str, timeMin: str, timeMax: str, timezone: str, recurrence: List[str], attendees: List[Dict[str, str]]):
+def cal_add_event(summary: str, location: str, description: str, timeMin: str, timeMax: str, timezone: str, recurrence: List[str], attendees: List[Dict[str, str]], colorId: str):
 	'''
 	This node creates a google calendar event with the specified information.
-	Clarify for critical fields, otherwise it's ok if you leave certain fields blank.
-	summary: title of the event, critical
-	location: location of the event, not critical
-	description: description of event, leave blank unless user specifies details such as room number, attire, reminders, etc
+	summary: title of the event
+	location: location of the event, blank string if unspecified
+	description: description of event, blank string unless user specifies details such as room number, attire, reminders, etc
 	timeMin: starting time of event using the RFC3339 format, critical
 	timeMax: ending time of event using RFC3339 format, set to one hour after timeMin if unspecified
-	timezone: unless specified it's going to be 'America/New_York'
-	recurrence: recurrences, follows the iCalendar (RFC 5545) standard, use when applicable
+	timezone: timezone, default to 'America/New_York'
+	recurrence: recurrences, blank list if nonrepeating, follows the iCalendar (RFC 5545) standard
 	attendees: list of dictionaries of attendees (emails), here's an example: [
 			{'email': 'lpage@example.com'},
 			{'email': 'sbrin@example.com'},
 		], will usually be empty
+	colorId: color of the event. if not specified, use the following guidelines:
+	- 9 for classes
+	- 3 for academics (anything school related but not specifically class/labs, such as office hours)
+	- 5 for social (club meetings, activities, events)
+	- 11 for important things (advisor meetings, interviews, calls, exams, etc)
+	- 8 if I specify that I am not going to that event, but want it in my calendar
+	- 7 for anything else
 	'''
 
 	creds = cal_auth()
@@ -113,6 +120,7 @@ def cal_add_event(summary: str, location: str, description: str, timeMin: str, t
 				# 	{'method': 'popup', 'minutes': 10},
 				# ],
 			},
+			'colorId': colorId
 		}
 
 		event = service.events().insert(calendarId='primary', body=body).execute()
@@ -120,31 +128,6 @@ def cal_add_event(summary: str, location: str, description: str, timeMin: str, t
 
 	except HttpError as error:
 		return f'An error occurred: {error}'
-
-# @tool
-# def cal_check_availability(start: str, end: str, timezone: str):
-# 	'''This node checks calendar availability. 'start' and 'end' are of RFC3339 format.'''
-
-# 	creds = cal_auth()
-
-# 	try:
-# 		service = build('calendar', 'v3', credentials=creds)
-
-# 		body = {
-# 			'timeMin': start,
-# 			'timeMax': end,
-# 			'timeZone': timezone,
-# 			# 'groupExpansionMax': , (max num of cal ids)
-# 			# 'calendarExpansionMax': , (max num of calendars)
-# 			'items': [{'id': 'primary'}]
-# 		}
-
-# 		events = service.freebusy().query(body=body).execute()
-
-# 		return events
-
-# 	except HttpError as error:
-# 		return f'An error occurred: {error}'
 
 @tool
 def cal_get_event(eventId: str):
@@ -162,39 +145,111 @@ def cal_get_event(eventId: str):
 	except HttpError as error:
 		return f'An error occurred: {error}'
 
-# @tool
-# def cal_edit_event(eventId: str):
-# 	'''This node edits an existing google calendar event using the eventId'''
+@tool
+def cal_edit_event(eventId: str, summary: str, location: str, description: str, timeMin: str, timeMax: str, timezone: str, recurrence: List[str], attendees: List[Dict[str, str]], colorId: str):
+	'''
+	This node edits an existing google calendar event using the eventId
 
-# 	creds = cal_auth()
+	Only update the fields that are to be changed, leave everything else the same as the original event
 
-# 	try:
-# 		service = build('calendar', 'v3', credentials=creds)
+	summary: title of the event, critical
+	location: location of the event, not critical
+	description: description of event, leave blank unless user specifies details such as room number, attire, reminders, etc
+	timeMin: starting time of event using the RFC3339 format, critical
+	timeMax: ending time of event using RFC3339 format, set to one hour after timeMin if unspecified
+	timezone: unless specified it's going to be 'America/New_York'
+	recurrence: recurrences, follows the iCalendar (RFC 5545) standard, use when applicable
+	attendees: list of dictionaries of attendees (emails), here's an example: [
+			{'email': 'lpage@example.com'},
+			{'email': 'sbrin@example.com'},
+		], will usually be empty
+	colorId: color of the event. if not specified, use the following guidelines:
+	- 1 for classes
+	- 3 for academics (anything school related but not specifically class/labs, such as office hours)
+	- 5 for social (club meetings, activities, events)
+	- 11 for important things (advisor meetings, interviews, calls, exams, etc)
+	- 8 if I specify that I am not going to that event, but want it in my calendar
+	- 9 for anything else
+	'''
 
-# 		body = {
+	creds = cal_auth()
 
-# 		}
+	try:
+		service = build('calendar', 'v3', credentials=creds)
 
-# 		events = service.events().update(calendarId='primary', eventId=eventId, body=body).execute()
+		body = {
+			'summary': summary,
+			'location': location,
+			'description': description,
+			'start': {
+				'dateTime': timeMin,
+				'timeZone': timezone,
+			},
+			'end': {
+				'dateTime': timeMax,
+				'timeZone': timezone,
+			},
+			'recurrence': recurrence,
+			'attendees': attendees,
+			'reminders': {
+				'useDefault': True,
+				# 'overrides': [
+				# 	{'method': 'email', 'minutes': 24 * 60},
+				# 	{'method': 'popup', 'minutes': 10},
+				# ],
+			},
+			'colorId': colorId
+		}
 
-# 		return events
+		events = service.events().update(calendarId='primary', eventId=eventId, body=body).execute()
 
-# 	except HttpError as error:
-# 		return f'An error occurred: {error}'
+		return events
+
+	except HttpError as error:
+		return f'An error occurred: {error}'
+
+@tool
+def cal_delete_event(eventId: str):
+	'''This node deletes an existing calendar event using its eventId'''
+
+	creds = cal_auth()
+
+	try:
+		service = build('calendar', 'v3', credentials=creds)
+
+		events = service.events().delete(calendarId='primary', eventId=eventId).execute()
+
+		return events
+
+	except HttpError as error:
+		return f'An error occurred: {error}'
 
 tavily_search = TavilySearch()
 
-tools = [tavily_search, cal_view_events, cal_add_event, cal_get_event]
+tools = [tavily_search, cal_view_events, cal_add_event, cal_get_event, cal_edit_event, cal_delete_event]
 
 llm = ChatGoogleGenerativeAI(
-    model='gemini-2.0-flash-lite',
+	# model='gemini-2.0-flash',
+    # model='gemini-2.0-flash-lite',
     # model='gemini-2.5-flash',
+    model='gemini-2.5-flash-lite',
+    # model='gemini-2.5-pro',
     temperature=0
 ).bind_tools(tools)
 
 def model_call(state: AgentState) -> AgentState:
 	now = datetime.datetime.now(tz=datetime.timezone.utc).isoformat()
-	system_prompt = SystemMessage(content=f'You are an AI agent, primarily centered around google calendar (scheduling, checking availability, etc.). Use the given tools to best support the user. You should also function as a regular chatbot and match the energy of the user. For calendar-related requests, only clarify on critical fields, otherwise do your best without. Before creating events, check for conficting events and inform the user of anything that falls within 30 minutes of the new event. Here is the current date and time as a reference point: {now}')
+	system_prompt = SystemMessage(content=f'''
+		You are an AI agent designed to manage the user's google calendar.
+		Use all available tools, and act as a regular chatbot while matching the user's energy.
+		For calendar requests, clarify only start time, infer everything else from the user's message.
+		For all other fields, take what you can from the user input and minimize follow up questions.
+		Answer the user's request as directly as possible. If they ask for today's events, don't give them events happening tomorrow.
+		NEVER ask the user for the eventId, always use the cal_view_events tool to find the event and get the id from there.
+		Before creating events, check for conficting events happening during/around the new event.
+		If an event ends within half an hour of the new event's start time, or starts within half an hour of the new event's end time, check with the user before creating it.
+		Here is the current date and time as a reference point: {now}
+	''')
 	response = llm.invoke([system_prompt] + state['messages'])
 	return {'messages': [response]}
 
@@ -223,7 +278,7 @@ graph.add_conditional_edges(
 
 graph.add_edge('tools', 'agent')
 
-app = graph.compile()
+app = graph.compile(checkpointer=InMemorySaver())
 
 def print_stream(stream):
 	for s in stream:
@@ -242,10 +297,11 @@ def mainloop():
 			break
 
 		state['messages'].append(('user', user_input))
+		config = {"configurable": {"thread_id": "1"}}
 
-		print_stream(app.stream(state, stream_mode='values'))
+		print_stream(app.stream(state, stream_mode='values', config=config))
 
-		state = app.invoke(state)
+		state = app.invoke(state, config=config)
 
 		# if not state['messages'][-1].tool_calls:
 		# 	break
