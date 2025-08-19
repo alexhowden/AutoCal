@@ -1,12 +1,9 @@
-from typing import TypedDict, Annotated, Sequence, List, Dict
-from dotenv import load_dotenv
-from langchain_core.messages import BaseMessage, ToolMessage, SystemMessage
+from langchain_core.messages import BaseMessage, ToolMessage, SystemMessage, HumanMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.tools import tool
 from langgraph.graph.message import add_messages
 from langgraph.graph import StateGraph, END
 from langgraph.prebuilt import ToolNode
-import random
 from langchain_tavily import TavilySearch
 from langgraph.checkpoint.memory import InMemorySaver
 
@@ -18,6 +15,8 @@ from googleapiclient.errors import HttpError
 
 import datetime
 import os.path
+from dotenv import load_dotenv
+from typing import TypedDict, Annotated, Sequence, List, Dict
 
 load_dotenv()
 SCOPES = ['https://www.googleapis.com/auth/calendar']
@@ -42,18 +41,18 @@ def cal_auth():
 
 	return creds
 
+creds = cal_auth()
+service = build('calendar', 'v3', credentials=creds)
+
 class AgentState(TypedDict):
 	messages: Annotated[Sequence[BaseMessage], add_messages]
 
 @tool
 def cal_view_events(maxResults: int, timeMin: str):
 	'''Returns next (maxResults) events on the user's calendar starting at (timeMin, RFC3339 format). Default to 10 results if no number specified.'''
-
-	creds = cal_auth()
+	global service
 
 	try:
-		service = build('calendar', 'v3', credentials=creds)
-
 		events = service.events().list(
 			calendarId='primary',
 			timeMin=timeMin,
@@ -61,10 +60,6 @@ def cal_view_events(maxResults: int, timeMin: str):
 			singleEvents=True,
 			orderBy='startTime'
 		).execute()
-
-		if not events:
-			return 'No upcoming events found.'
-
 		return events
 
 	except HttpError as error:
@@ -93,12 +88,9 @@ def cal_add_event(summary: str, location: str, description: str, timeMin: str, t
 	- 8 if I specify that I am not going to that event, but want it in my calendar
 	- 7 for anything else
 	'''
-
-	creds = cal_auth()
+	global service
 
 	try:
-		service = build('calendar', 'v3', credentials=creds)
-
 		body = {
 			'summary': summary,
 			'location': location,
@@ -132,14 +124,10 @@ def cal_add_event(summary: str, location: str, description: str, timeMin: str, t
 @tool
 def cal_get_event(eventId: str):
 	'''This node retrieves an existing google calendar event using its eventId'''
-
-	creds = cal_auth()
+	global service
 
 	try:
-		service = build('calendar', 'v3', credentials=creds)
-
 		event = service.events().get(calendarId='primary', eventId=eventId).execute()
-
 		return event
 
 	except HttpError as error:
@@ -149,7 +137,6 @@ def cal_get_event(eventId: str):
 def cal_edit_event(eventId: str, summary: str, location: str, description: str, timeMin: str, timeMax: str, timezone: str, recurrence: List[str], attendees: List[Dict[str, str]], colorId: str):
 	'''
 	This node edits an existing google calendar event using the eventId
-
 	Only update the fields that are to be changed, leave everything else the same as the original event
 
 	summary: title of the event, critical
@@ -171,12 +158,9 @@ def cal_edit_event(eventId: str, summary: str, location: str, description: str, 
 	- 8 if I specify that I am not going to that event, but want it in my calendar
 	- 9 for anything else
 	'''
-
-	creds = cal_auth()
+	global service
 
 	try:
-		service = build('calendar', 'v3', credentials=creds)
-
 		body = {
 			'summary': summary,
 			'location': location,
@@ -202,7 +186,6 @@ def cal_edit_event(eventId: str, summary: str, location: str, description: str, 
 		}
 
 		events = service.events().update(calendarId='primary', eventId=eventId, body=body).execute()
-
 		return events
 
 	except HttpError as error:
@@ -211,15 +194,11 @@ def cal_edit_event(eventId: str, summary: str, location: str, description: str, 
 @tool
 def cal_delete_event(eventId: str):
 	'''This node deletes an existing calendar event using its eventId'''
-
-	creds = cal_auth()
+	global service
 
 	try:
-		service = build('calendar', 'v3', credentials=creds)
-
 		events = service.events().delete(calendarId='primary', eventId=eventId).execute()
-
-		return events
+		return 'Event successfully deleted.'
 
 	except HttpError as error:
 		return f'An error occurred: {error}'
@@ -231,8 +210,8 @@ tools = [tavily_search, cal_view_events, cal_add_event, cal_get_event, cal_edit_
 llm = ChatGoogleGenerativeAI(
 	# model='gemini-2.0-flash',
     # model='gemini-2.0-flash-lite',
-    # model='gemini-2.5-flash',
-    model='gemini-2.5-flash-lite',
+    model='gemini-2.5-flash',
+    # model='gemini-2.5-flash-lite',
     # model='gemini-2.5-pro',
     temperature=0
 ).bind_tools(tools)
@@ -300,11 +279,9 @@ def mainloop():
 		config = {"configurable": {"thread_id": "1"}}
 
 		print_stream(app.stream(state, stream_mode='values', config=config))
+		# print_stream([state])
 
 		state = app.invoke(state, config=config)
-
-		# if not state['messages'][-1].tool_calls:
-		# 	break
 
 if __name__ == '__main__':
 	mainloop()
