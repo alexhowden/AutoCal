@@ -13,10 +13,11 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
-import datetime
+from datetime import datetime
 import os.path
 from dotenv import load_dotenv
 from typing import TypedDict, Annotated, Sequence, List, Dict
+from zoneinfo import ZoneInfo
 
 load_dotenv()
 SCOPES = ['https://www.googleapis.com/auth/calendar']
@@ -31,8 +32,10 @@ def cal_auth():
 		if creds and creds.expired and creds.refresh_token:
 			creds.refresh(Request())
 		else:
+			BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+			creds_path = os.path.join(BASE_DIR, 'credentials.json')
 			flow = InstalledAppFlow.from_client_secrets_file(
-				'credentials.json', SCOPES
+				creds_path, SCOPES
 			)
 			creds = flow.run_local_server(port=0)
 
@@ -48,7 +51,14 @@ class AgentState(TypedDict):
 	messages: Annotated[Sequence[BaseMessage], add_messages]
 
 @tool
-def cal_view_events(maxResults: int, timeMin: str):
+def get_time(zone: str='America/New_York'):
+	'''This node returns the current time for a particular timezone.'''
+	tz = ZoneInfo(zone)
+	curr_time = datetime.now(tz)
+	return curr_time.isoformat()
+
+@tool
+def cal_view_events(timeMin: str, maxResults: int=10):
 	'''Returns next (maxResults) events on the user's calendar starting at (timeMin, RFC3339 format). Default to 10 results if no number specified.'''
 	global service
 
@@ -66,7 +76,7 @@ def cal_view_events(maxResults: int, timeMin: str):
 		return f'An error occurred: {error}'
 
 @tool
-def cal_add_event(summary: str, location: str, description: str, timeMin: str, timeMax: str, timezone: str, recurrence: List[str], attendees: List[Dict[str, str]], colorId: str):
+def cal_add_event(summary: str, location: str, description: str, timeMin: str, timeMax: str, recurrence: List[str], attendees: List[Dict[str, str]], colorId: str, timezone: str='America/New_York'):
 	'''
 	This node creates a google calendar event with the specified information.
 	summary: title of the event
@@ -205,7 +215,7 @@ def cal_delete_event(eventId: str):
 
 tavily_search = TavilySearch()
 
-tools = [tavily_search, cal_view_events, cal_add_event, cal_get_event, cal_edit_event, cal_delete_event]
+tools = [tavily_search, get_time, cal_view_events, cal_add_event, cal_get_event, cal_edit_event, cal_delete_event]
 
 llm = ChatGoogleGenerativeAI(
 	# model='gemini-2.0-flash',
@@ -217,7 +227,6 @@ llm = ChatGoogleGenerativeAI(
 ).bind_tools(tools)
 
 def model_call(state: AgentState) -> AgentState:
-	now = datetime.datetime.now(tz=datetime.timezone.utc).isoformat()
 	system_prompt = SystemMessage(content=f'''
 		You are an AI agent designed to manage the user's google calendar.
 		Use all available tools, and act as a regular chatbot while matching the user's energy.
@@ -227,7 +236,6 @@ def model_call(state: AgentState) -> AgentState:
 		NEVER ask the user for the eventId, always use the cal_view_events tool to find the event and get the id from there.
 		Before creating events, check for conficting events happening during/around the new event.
 		If an event ends within half an hour of the new event's start time, or starts within half an hour of the new event's end time, check with the user before creating it.
-		Here is the current date and time as a reference point: {now}
 	''')
 	response = llm.invoke([system_prompt] + state['messages'])
 	return {'messages': [response]}
@@ -279,9 +287,18 @@ def mainloop():
 		config = {"configurable": {"thread_id": "1"}}
 
 		print_stream(app.stream(state, stream_mode='values', config=config))
-		# print_stream([state])
 
 		state = app.invoke(state, config=config)
+
+
+def agent_call(user_id: str, message: str, state_store: dict):
+	state = state_store.get(user_id, {'messages': []})
+	state['messages'].append(('user', message))
+	config = {'configurable': {'thread_id': user_id}}
+
+	state = app.invoke(state, config=config)
+	state_store[user_id] = state
+	return state['messages'][-1].content
 
 if __name__ == '__main__':
 	mainloop()

@@ -1,8 +1,17 @@
 dotenv
+python-dotenv
+
 langgraph
 langchain
+langchain-core
 langchain-tavily
 langchain-google-genai
+
 google-api-python-client
+google-auth
 google-auth-httplib2
 google-auth-oauthlib
+
+fastapi
+uvicorn
+pydantic
