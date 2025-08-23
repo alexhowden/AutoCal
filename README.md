@@ -23,7 +23,7 @@ GOOGLE_AI_KEY=your_google_ai_key_here
 ```
 8. Run the app either from the command line, or through the frontend interface using:
 ```console
-uvicorn src.server:app --reload --port 8000``` and
-```console
+uvicorn src.server:app --reload --port 8000
+
 npm run dev
 ```
