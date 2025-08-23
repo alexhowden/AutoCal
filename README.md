@@ -27,3 +27,8 @@ uvicorn src.server:app --reload --port 8000
 
 npm run dev
 ```
+
+## Screenshots
+
+**Frontend Chat Interface**
+![Chat Interface](media/demo.png)
