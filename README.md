@@ -17,10 +17,13 @@ pip install -r requirements.txt
 ```
 7. Put your API keys from steps 4 and 5 into a .env file in the root directory like so:
 ```console
-TAVILY_API_KEY=your_tavily_key_here GOOGLE_AI_KEY=your_google_ai_key_here
+TAVILY_API_KEY=your_tavily_key_here
+
+GOOGLE_AI_KEY=your_google_ai_key_here
 ```
 8. Run the app either from the command line, or through the frontend interface using:
 ```console
 uvicorn src.server:app --reload --port 8000``` and
 ```console
-npm run dev```
+npm run dev
+```
