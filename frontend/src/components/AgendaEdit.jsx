@@ -1,14 +1,13 @@
 import { useState } from 'react'
 import { NodePanel, HButton, CyberSelect, Toggle } from './ui.jsx'
-import { localDate } from '../gcal.js'
-
-const cats = ['CLASS', 'ACADEMIC', 'SOCIAL', 'IMPORTANT']
+import { localDate, getCats } from '../gcal.js'
 
 // field set mirrors what the agent can patch through the APIs:
 // events -> summary, start, end, location, colorId (category), description
 // tasks  -> title, due, status, notes
 export default function AgendaEdit({ item, onSave, onDelete, onClose }) {
   const isTask = item.type === 'task'
+  const cats = getCats().map((c) => c.name)
   const [form, setForm] = useState({
     name: item.name,
     date: item.date || (item.type === 'task' ? '' : localDate(new Date())),

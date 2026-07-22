@@ -24,7 +24,7 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
-from .store import log_activity
+from .store import get_settings, log_activity
 
 load_dotenv()
 SCOPES = [
@@ -73,6 +73,35 @@ def get_service(api='calendar'):
 			_services[api] = build(api, API_VERSIONS[api], credentials=cal_auth())
 		return _services[api]
 
+def google_status():
+	'''Reports link health WITHOUT ever launching the interactive OAuth flow.'''
+	token_path = os.path.join(BASE_DIR, 'token.json')
+	if not os.path.exists(token_path):
+		return {'connected': False, 'reason': 'no token'}
+	try:
+		creds = Credentials.from_authorized_user_file(token_path)
+		if not creds.scopes or not set(SCOPES).issubset(set(creds.scopes)):
+			return {'connected': False, 'reason': 'missing scopes'}
+		cal = build('calendar', 'v3', credentials=creds).calendarList().get(calendarId='primary').execute()
+		return {
+			'connected': True,
+			'email': cal.get('id', ''),
+			'scopes': [s.rsplit('/', 1)[-1] for s in creds.scopes],
+		}
+	except Exception as e:
+		return {'connected': False, 'reason': str(e)[:120]}
+
+def force_reauth():
+	'''Runs a fresh consent flow (browser popup) and swaps the services over.'''
+	creds_path = os.path.join(BASE_DIR, 'credentials.json')
+	flow = InstalledAppFlow.from_client_secrets_file(creds_path, SCOPES)
+	creds = flow.run_local_server(port=0, timeout_seconds=180)
+	with open(os.path.join(BASE_DIR, 'token.json'), 'w') as token:
+		token.write(creds.to_json())
+	with _service_lock:
+		_services.clear()
+	return True
+
 async def gcal(op, log=None):
 	'''Runs blocking Google API work off the event loop so a slow call
 	(or a pending OAuth consent) never freezes the server.
@@ -95,7 +124,7 @@ def tool_result(data):
 
 @tool(
 	'get_time',
-	'Returns the current time for a particular IANA timezone. Defaults to America/New_York.',
+	"Returns the current time for a particular IANA timezone. Defaults to the user's configured timezone.",
 	{
 		'type': 'object',
 		'properties': {
@@ -105,7 +134,7 @@ def tool_result(data):
 	},
 )
 async def get_time(args):
-	tz = ZoneInfo(args.get('zone', 'America/New_York'))
+	tz = ZoneInfo(args.get('zone', get_settings()['timezone']))
 	return tool_result(datetime.now(tz).isoformat())
 
 @tool(
@@ -136,13 +165,7 @@ async def cal_view_events(args):
 	'cal_add_event',
 	'''Creates a google calendar event with the specified information.
 	timeMax defaults to one hour after timeMin if the user gives no end time.
-	colorId guidelines when the user does not specify a color:
-	- 9 for classes
-	- 3 for academics (anything school related but not specifically class/labs, such as office hours)
-	- 5 for social (club meetings, activities, events)
-	- 11 for important things (advisor meetings, interviews, calls, exams, etc)
-	- 8 if the user says they are not going to the event, but want it in the calendar
-	- 7 for anything else''',
+	For colorId, follow the event color protocol from your system instructions.''',
 	{
 		'type': 'object',
 		'properties': {
@@ -172,17 +195,18 @@ async def cal_view_events(args):
 	},
 )
 async def cal_add_event(args):
+	tz = args.get('timezone', get_settings()['timezone'])
 	body = {
 		'summary': args['summary'],
 		'location': args.get('location', ''),
 		'description': args.get('description', ''),
 		'start': {
 			'dateTime': args['timeMin'],
-			'timeZone': args.get('timezone', 'America/New_York'),
+			'timeZone': tz,
 		},
 		'end': {
 			'dateTime': args['timeMax'],
-			'timeZone': args.get('timezone', 'America/New_York'),
+			'timeZone': tz,
 		},
 		'recurrence': args.get('recurrence', []),
 		'attendees': args.get('attendees', []),
@@ -216,7 +240,7 @@ async def cal_get_event(args):
 	'''Edits an existing google calendar event using its eventId.
 	Only pass the fields that should change; all other fields are preserved automatically.
 	timeMin and timeMax use the RFC3339 format.
-	colorId guidelines are the same as cal_add_event.''',
+	For colorId, follow the event color protocol from your system instructions.''',
 	{
 		'type': 'object',
 		'properties': {
@@ -247,7 +271,7 @@ async def cal_edit_event(args):
 		if key in args:
 			body[key] = args[key]
 
-	timezone = args.get('timezone', 'America/New_York')
+	timezone = args.get('timezone', get_settings()['timezone'])
 	if 'timeMin' in args:
 		body['start'] = {'dateTime': args['timeMin'], 'timeZone': timezone}
 	if 'timeMax' in args:
@@ -288,13 +312,24 @@ For calendar requests, clarify only start time, infer everything else from the u
 For all other fields, take what you can from the user input and minimize follow up questions.
 Answer the user's request as directly as possible. If they ask for today's events, don't give them events happening tomorrow.
 NEVER ask the user for the eventId, always use the cal_view_events tool to find the event and get the id from there.
-Before creating events, check for conflicting events happening during/around the new event.
-If an event ends within half an hour of the new event's start time, or starts within half an hour of the new event's end time, check with the user before creating it.
 '''
 
+CONFLICT_CLAUSE = '''Before creating events, check for conflicting events happening during/around the new event.
+If an event ends within half an hour of the new event's start time, or starts within half an hour of the new event's end time, check with the user before creating it.'''
+
 def build_options():
+	settings = get_settings()
+	prompt = SYSTEM_PROMPT + f"The user's default timezone is {settings['timezone']}. Use it whenever they give no explicit zone.\n"
+	cats = settings['categories']
+	proto = '\n'.join(f"- {c['colorId']} for {c['name']}" for c in cats)
+	prompt += (
+		'Event color protocol - colorId to use when the user does not specify a color:\n'
+		f"{proto}\n- {cats[-1]['colorId']} for anything that fits no category\n"
+	)
+	if settings['conflictCheck']:
+		prompt += CONFLICT_CLAUSE
 	return ClaudeAgentOptions(
-		system_prompt=SYSTEM_PROMPT,
+		system_prompt=prompt,
 		mcp_servers={'calendar': calendar_server},
 		include_partial_messages=True,
 		disallowed_tools=['Bash', 'Write', 'Edit', 'NotebookEdit'],
@@ -360,6 +395,12 @@ async def agent_stream(user_id: str, message: str):
 
 		except Exception as e:
 			yield {'type': 'error', 'message': str(e)}
+
+async def close_session(user_id: str):
+	client = _clients.pop(user_id, None)
+	_locks.pop(user_id, None)
+	if client:
+		await client.disconnect()
 
 async def agent_call(user_id: str, message: str) -> str:
 	lock = _locks.setdefault(user_id, asyncio.Lock())

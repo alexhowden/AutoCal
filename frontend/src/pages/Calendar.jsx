@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react'
 import { VentPanel, NodePanel, PageHead, HButton } from '../components/ui.jsx'
 import AgendaEdit from '../components/AgendaEdit.jsx'
-import { catStyle } from '../mock.js'
 import { getEvents, patchEvent, deleteEvent } from '../api.js'
-import { toItem, toPatch, hm, TZ } from '../gcal.js'
+import { toItem, toPatch, hm, TZ, tagClass, isAccent, loadProtocol } from '../gcal.js'
 
 const DAY_START = 8
 const DAY_END = 22
@@ -53,7 +52,7 @@ function DayColumn({ label, events, allDayItems, isToday, nowHour, detailed, onS
         {events.map((e) => (
           <div
             key={e.id}
-            className={`cal-event ${e.cat === 'IMPORTANT' ? 'important' : ''} ${e.endH - e.startH <= 0.8 ? 'short' : ''}`}
+            className={`cal-event ${isAccent(e.cat) ? 'important' : ''} ${e.endH - e.startH <= 0.8 ? 'short' : ''}`}
             style={{
               top: (e.startH - DAY_START) * HOUR_PX + 1,
               height: (e.endH - e.startH) * HOUR_PX - 4,
@@ -101,6 +100,7 @@ export default function Calendar() {
     const end = new Date(start)
     end.setDate(end.getDate() + 7)
     try {
+      await loadProtocol()
       const evs = await getEvents(start.toISOString(), end.toISOString())
       setItems(evs.map(toItem))
       setLinkDown(false)
@@ -231,7 +231,7 @@ export default function Calendar() {
               )}
               <div className="cal-drow">
                 <span className="k">Type</span>
-                <span className={catStyle[selected.cat]}>{selected.cat}</span>
+                <span className={tagClass(selected.cat)}>{selected.cat}</span>
               </div>
               <div className="cal-dbtns">
                 <HButton small onClick={() => setEditing(selected)}>

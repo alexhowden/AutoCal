@@ -1,43 +1,52 @@
 import { createContext, useContext, useState } from 'react'
-import { streamChat } from './api.js'
+import { streamChat, closeChatSession } from './api.js'
 
 const OFFLINE_MSG =
   '// LINK OFFLINE - backend not reachable on 127.0.0.1:8787. Start it with: uvicorn src.server:app --port 8787'
 
 const ChatCtx = createContext(null)
 
+const makeSession = () => ({ id: crypto.randomUUID(), messages: [], thinking: false })
+
 // chat state lives above the page component so switching tabs doesn't wipe
-// the transcript, and an in-flight stream keeps going in the background
+// transcripts, and an in-flight stream keeps going in the background.
+// each session maps to its own agent conversation on the backend.
 export function ChatProvider({ children }) {
-  const [messages, setMessages] = useState([])
+  const [sessions, setSessions] = useState(() => [makeSession()])
+  const [activeId, setActiveId] = useState(null)
   const [input, setInput] = useState('')
   const [files, setFiles] = useState([])
-  const [thinking, setThinking] = useState(false)
+
+  const active = sessions.find((s) => s.id === activeId) ?? sessions[0]
+
+  const patchSession = (id, fn) => setSessions((ss) => ss.map((s) => (s.id === id ? fn(s) : s)))
 
   const send = async () => {
-    if ((!input.trim() && files.length === 0) || thinking) return
+    const sess = active
+    if ((!input.trim() && files.length === 0) || sess.thinking) return
     const mine = {
       id: Date.now(),
       from: 'user',
       text: input.trim(),
       file: files[0] || null,
     }
-    setMessages((m) => [...m, mine])
+    patchSession(sess.id, (s) => ({ ...s, thinking: true, messages: [...s.messages, mine] }))
     setInput('')
     setFiles([])
-    setThinking(true)
 
     const replyId = mine.id + 1
     // update-or-append the streaming agent message, built from ordered parts
     const patch = (fn) =>
-      setMessages((m) => {
-        const existing = m.find((x) => x.id === replyId)
-        if (!existing) return [...m, { id: replyId, from: 'agent', parts: fn([]) }]
-        return m.map((x) => (x.id === replyId ? { ...x, parts: fn(x.parts) } : x))
+      patchSession(sess.id, (s) => {
+        const existing = s.messages.find((x) => x.id === replyId)
+        const messages = existing
+          ? s.messages.map((x) => (x.id === replyId ? { ...x, parts: fn(x.parts) } : x))
+          : [...s.messages, { id: replyId, from: 'agent', parts: fn([]) }]
+        return { ...s, messages }
       })
 
     try {
-      await streamChat(mine.text, (ev) => {
+      await streamChat(sess.id, mine.text, (ev) => {
         patch((parts) => {
           const last = parts[parts.length - 1]
           if (ev.type === 'text') {
@@ -61,19 +70,46 @@ export function ChatProvider({ children }) {
         })
       })
     } catch {
-      setMessages((m) => [
-        ...m,
-        { id: replyId, from: 'agent', parts: [{ t: 'text', text: OFFLINE_MSG, err: true }] },
-      ])
+      patchSession(sess.id, (s) => ({
+        ...s,
+        messages: [
+          ...s.messages,
+          { id: replyId, from: 'agent', parts: [{ t: 'text', text: OFFLINE_MSG, err: true }] },
+        ],
+      }))
     }
-    setThinking(false)
+    patchSession(sess.id, (s) => ({ ...s, thinking: false }))
   }
 
-  return (
-    <ChatCtx.Provider value={{ messages, input, setInput, files, setFiles, thinking, send }}>
-      {children}
-    </ChatCtx.Provider>
-  )
+  const addSession = () => {
+    const s = makeSession()
+    setSessions((ss) => [...ss, s])
+    setActiveId(s.id)
+  }
+
+  const closeSession = (id) => {
+    setSessions((ss) => {
+      const rest = ss.filter((s) => s.id !== id)
+      return rest.length ? rest : [makeSession()]
+    })
+    if (id === activeId) setActiveId(null)
+    closeChatSession(id).catch(() => {})
+  }
+
+  const value = {
+    sessions,
+    active,
+    selectSession: setActiveId,
+    addSession,
+    closeSession,
+    input,
+    setInput,
+    files,
+    setFiles,
+    send,
+  }
+
+  return <ChatCtx.Provider value={value}>{children}</ChatCtx.Provider>
 }
 
 export const useChat = () => useContext(ChatCtx)

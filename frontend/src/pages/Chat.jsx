@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
 import { Panel, SegBar, PageHead, Corners, HButton } from '../components/ui.jsx'
-import { sessionTag } from '../api.js'
 import { useChat } from '../chat.jsx'
 import { inline } from '../md.jsx'
 
@@ -45,7 +44,10 @@ function renderParts(parts) {
 }
 
 export default function Chat() {
-  const { messages, input, setInput, files, setFiles, thinking, send } = useChat()
+  const { sessions, active, selectSession, addSession, closeSession, input, setInput, files, setFiles, send } =
+    useChat()
+  const messages = active.messages
+  const thinking = active.thinking
   const [dragging, setDragging] = useState(false)
   const scrollRef = useRef(null)
   const inputRef = useRef(null)
@@ -93,9 +95,35 @@ export default function Chat() {
           agent: <span className="c">{thinking ? 'active' : 'idle'}</span>
         </span>
         <span>
-          session <b>{sessionTag}</b>
+          session <b>{active.id.slice(0, 4).toUpperCase()}</b>
         </span>
       </PageHead>
+
+      <div className="sess-row">
+        {sessions.map((s) => (
+          <div
+            key={s.id}
+            className={`sess-chip ${s.id === active.id ? 'active' : ''} ${s.thinking ? 'busy' : ''}`}
+            onClick={() => selectSession(s.id)}
+          >
+            {s.id.slice(0, 4)}
+            {sessions.length > 1 && (
+              <button
+                className="sess-x"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  closeSession(s.id)
+                }}
+              >
+                ✕
+              </button>
+            )}
+          </div>
+        ))}
+        <button className="sess-chip sess-new" onClick={addSession}>
+          + new
+        </button>
+      </div>
 
       <div
         className="chat-layout"

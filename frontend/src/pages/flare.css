@@ -50,18 +50,20 @@
   background: linear-gradient(120deg, #f2506b, #e42c45 45%, #a5182e);
 }
 
-/* glitch boot */
-.flare-combo2 { animation: fgentry 7s steps(1) infinite; }
+/* glitch boot - rapid cuts (~40ms/frame at 6s), not a slow blink */
+.flare-combo2 { animation: fgentry 6s steps(1) infinite; }
 
 @keyframes fgentry {
-  0% { transform: translateX(5px); filter: sepia(1) saturate(5) hue-rotate(145deg) brightness(1.2); }
-  1.4% { transform: translateX(-3px) skewX(0.4deg); filter: none; }
-  2.9% { transform: translateX(2px); filter: sepia(1) saturate(5) hue-rotate(145deg) brightness(1.35); }
-  4.3%, 100% { transform: none; filter: none; }
+  0% { transform: translateX(6px) skewX(-1deg); filter: sepia(1) saturate(6) hue-rotate(145deg) brightness(1.4); }
+  0.7% { transform: translateX(-5px); filter: none; }
+  1.4% { transform: translateX(3px) skewX(0.8deg); filter: sepia(1) saturate(5) hue-rotate(145deg) brightness(1.2); }
+  2.1% { transform: translateX(-2px) skewX(-0.4deg); filter: none; }
+  2.8% { transform: translateX(4px); filter: sepia(1) saturate(6) hue-rotate(145deg) brightness(1.5); }
+  3.4%, 100% { transform: none; filter: none; }
 }
 
 :is(.flare-combo, .flare-combo2) :is(.forge-stripes, .forge-stripes-v, .forge-stripes-b) path {
-  animation: fstin 7s infinite;
+  animation: fstin 6s infinite;
 }
 
 :is(.flare-combo, .flare-combo2) :is(.forge-stripes, .forge-stripes-v, .forge-stripes-b) path:nth-child(1) { animation-delay: 0.4s; }
@@ -109,7 +111,7 @@
 .fpip {
   stroke: #ffffff;
   stroke-dasharray: 14 400;
-  animation: fcpipa 7s linear infinite;
+  animation: fcpipa 6s linear infinite;
 }
 
 @keyframes fcpipa {
@@ -124,7 +126,7 @@
 .fpipb {
   stroke: #ffffff;
   stroke-dasharray: 14 400;
-  animation: fcpipb 7s linear infinite;
+  animation: fcpipb 6s linear infinite;
 }
 
 @keyframes fcpipb {
@@ -139,7 +141,7 @@
 .fpipc {
   stroke: #ffffff;
   stroke-dasharray: 14 400;
-  animation: fcpipc 7s linear infinite;
+  animation: fcpipc 6s linear infinite;
 }
 
 @keyframes fcpipc {

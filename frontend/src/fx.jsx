@@ -1,6 +1,6 @@
-import { createContext, useContext, useState } from 'react'
+import { createContext, useContext, useEffect, useState } from 'react'
 
-const defaults = { embers: true, sweep: true, tabPulse: true }
+const defaults = { embers: true, sweep: true, tabPulse: true, glow: 1 }
 
 const FxContext = createContext({ fx: defaults, setFx: () => {} })
 
@@ -12,6 +12,10 @@ export function FxProvider({ children }) {
       return defaults
     }
   })
+
+  useEffect(() => {
+    document.documentElement.style.setProperty('--glow-mult', fx.glow)
+  }, [fx.glow])
 
   const setFx = (key, val) => {
     setFxState((f) => {

@@ -27,6 +27,53 @@ def _write(name, data):
 		json.dump(data, f, indent=1)
 	os.replace(tmp, _path(name))
 
+DEFAULT_SETTINGS = {
+	'timezone': 'America/New_York',
+	'conflictCheck': True,
+	'launchAtLogin': True,
+	'categories': [
+		{'name': 'CLASS', 'colorId': '9'},
+		{'name': 'ACADEMIC', 'colorId': '3'},
+		{'name': 'SOCIAL', 'colorId': '5'},
+		{'name': 'IMPORTANT', 'colorId': '11'},
+		{'name': 'SKIP', 'colorId': '8'},
+		{'name': 'OTHER', 'colorId': '7'},
+	],
+}
+
+VALID_COLOR_IDS = {str(i) for i in range(1, 12)}
+
+def _clean_categories(value):
+	if not isinstance(value, list):
+		return None
+	rows = []
+	for row in value[:12]:
+		if not isinstance(row, dict):
+			continue
+		name = str(row.get('name', '')).strip()[:24]
+		color = str(row.get('colorId', ''))
+		if name and color in VALID_COLOR_IDS:
+			rows.append({'name': name, 'colorId': color})
+	return rows or None
+
+def get_settings():
+	with _lock:
+		return {**DEFAULT_SETTINGS, **_read('settings.json', {})}
+
+def update_settings(patch):
+	patch = {k: v for k, v in patch.items() if k in DEFAULT_SETTINGS}
+	if 'categories' in patch:
+		cleaned = _clean_categories(patch['categories'])
+		if cleaned is None:
+			del patch['categories']
+		else:
+			patch['categories'] = cleaned
+	with _lock:
+		current = {**DEFAULT_SETTINGS, **_read('settings.json', {})}
+		current.update(patch)
+		_write('settings.json', current)
+		return current
+
 def log_activity(kind, text, source='agent'):
 	with _lock:
 		entries = _read('activity.json', [])

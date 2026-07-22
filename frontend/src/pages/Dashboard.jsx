@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import { NodePanel, WirePanel, RingGauge, SegBar, PageHead, Corners, HButton } from '../components/ui.jsx'
 import AgendaEdit from '../components/AgendaEdit.jsx'
-import { catStyle } from '../mock.js'
 import {
   getEvents,
   patchEvent,
@@ -12,7 +11,7 @@ import {
   deleteTask,
   moveTask,
 } from '../api.js'
-import { toItem, toPatch, toTask, toTaskPatch, localDate, hm } from '../gcal.js'
+import { toItem, toPatch, toTask, toTaskPatch, localDate, hm, tagClass, loadProtocol } from '../gcal.js'
 
 const NEW_TASK_ID = '__new__'
 
@@ -46,6 +45,7 @@ export default function Dashboard() {
       const [evs] = await Promise.all([
         getEvents(start.toISOString(), end.toISOString()),
         refreshTasks(),
+        loadProtocol(),
       ])
       setItems(evs.map(toItem))
       setSyncedAt(hm(new Date()))
@@ -225,7 +225,7 @@ export default function Dashboard() {
                   <span>{item.name}</span>
                   {item.loc && <span className="agenda-loc">@ {item.loc}</span>}
                 </span>
-                <span className={catStyle[item.cat]}>{item.cat}</span>
+                <span className={tagClass(item.cat)}>{item.cat}</span>
               </div>
               {i === nowPos - 1 && (
                 <div className="now-line">

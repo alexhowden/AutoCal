@@ -1476,6 +1476,55 @@ textarea.finput { resize: vertical; min-height: 58px; line-height: 1.5; font-fam
   text-shadow: 0 0 8px rgb(255 42 69 / calc(0.6 * var(--glow-mult)));
 }
 
+.sess-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+
+.sess-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 12px;
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--text-mid);
+  background: transparent;
+  border: 1px solid rgb(255 255 255 / 0.22);
+  cursor: pointer;
+  transition: all .1s;
+}
+
+.sess-chip:hover { color: var(--text-hi); border-color: var(--red-line); }
+
+.sess-chip.active {
+  color: var(--red-bright);
+  border-color: var(--red);
+  background: var(--red-ghost);
+  text-shadow: 0 0 8px rgb(255 42 69 / calc(0.6 * var(--glow-mult)));
+}
+
+.sess-chip.busy::after {
+  content: '';
+  width: 5px;
+  height: 5px;
+  background: var(--cyan);
+  box-shadow: 0 0 6px var(--cyan);
+}
+
+.sess-chip .sess-x {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 11px;
+  color: var(--text-low);
+  cursor: pointer;
+}
+
+.sess-chip .sess-x:hover { color: var(--red-bright); }
+
+.sess-new { color: var(--cyan); border-style: dashed; }
+
 .log-list { display: flex; flex-direction: column; font-size: 13px; }
 
 .log-line {
@@ -1583,7 +1632,7 @@ input[type='range'].cyber::-webkit-slider-thumb {
 
 .proto-row {
   display: grid;
-  grid-template-columns: 22px 1fr 110px auto;
+  grid-template-columns: 22px 1fr 230px 26px;
   gap: 12px;
   align-items: center;
   padding: 8px 4px;
@@ -1593,6 +1642,43 @@ input[type='range'].cyber::-webkit-slider-thumb {
 .proto-row:last-child { border-bottom: none; }
 .proto-cat { color: var(--text-hi); }
 .proto-id { font-size: 12px; color: var(--text-low); letter-spacing: 1px; }
+
+.swatch-btn { cursor: pointer; padding: 0; transition: box-shadow .12s; }
+
+.swatch-btn:hover { box-shadow: 0 0 8px rgb(255 255 255 / 0.35); }
+
+.swatch-btn.sel { outline: 2px solid var(--text-hi); outline-offset: 2px; }
+
+.color-pop {
+  position: fixed;
+  z-index: 1000;
+  display: grid;
+  grid-template-columns: repeat(6, 20px);
+  gap: 10px;
+  padding: 12px;
+  background: var(--bg-raised);
+  border: 1px solid var(--red-line);
+  box-shadow: 0 8px 30px rgb(0 0 0 / 0.6);
+}
+
+.color-pop .swatch { width: 20px; height: 20px; }
+
+.proto-name {
+  padding: 5px 9px;
+  font-size: 13px;
+  letter-spacing: 1px;
+}
+
+.proto-x {
+  position: static;
+  transform: none;
+}
+
+.proto-row:hover .proto-x { opacity: 1; }
+
+.proto-x:disabled { opacity: 0.2; cursor: default; }
+
+.proto-add { padding-top: 10px; }
 
 @media (prefers-reduced-motion: reduce) {
   .seg.pulse, .dot, .bg-fx, .bg-fx::after,

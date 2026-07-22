@@ -1,9 +1,5 @@
 export const API = 'http://127.0.0.1:8787'
 
-// one conversation per app launch - the backend keys agent sessions on this
-export const sessionId = crypto.randomUUID()
-export const sessionTag = sessionId.slice(0, 4)
-
 async function req(path, opts) {
   const res = await fetch(`${API}${path}`, opts)
   if (!res.ok) throw new Error(`http ${res.status}`)
@@ -49,8 +45,19 @@ export const patchNote = (id, text) =>
 
 export const deleteNoteApi = (id) => req(`/notes/${encodeURIComponent(id)}`, { method: 'DELETE' })
 
-// POST to an SSE endpoint and invoke onEvent for each parsed `data:` payload
-export async function streamChat(message, onEvent) {
+export const getSettings = () => req('/settings')
+
+export const patchSettings = (patch) => req('/settings', { method: 'PATCH', ...json(patch) })
+
+export const getStatus = () => req('/status')
+
+export const reauthGoogle = () => req('/auth/google', { method: 'POST' })
+
+export const closeChatSession = (id) => req(`/chat/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' })
+
+// POST to an SSE endpoint and invoke onEvent for each parsed `data:` payload;
+// the backend keys agent conversations on sessionId
+export async function streamChat(sessionId, message, onEvent) {
   const res = await fetch(`${API}/chat/stream`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

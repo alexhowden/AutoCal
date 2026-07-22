@@ -6,7 +6,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from googleapiclient.errors import HttpError
 from pydantic import BaseModel
-from .agent import agent_call, agent_stream, get_service
+from .agent import (
+	agent_call,
+	agent_stream,
+	close_session,
+	get_service,
+	google_status,
+	force_reauth,
+	_clients,
+)
 from .store import (
 	log_activity,
 	read_activity,
@@ -14,6 +22,8 @@ from .store import (
 	create_note,
 	update_note,
 	delete_note,
+	get_settings,
+	update_settings,
 )
 
 app = FastAPI()
@@ -118,6 +128,30 @@ async def delete_task(task_id: str):
 	log_activity('DELETE', f'TASK {task_id} removed', 'ui')
 	return result
 
+@app.get("/settings")
+async def settings_get():
+	return get_settings()
+
+@app.patch("/settings")
+async def settings_patch(body: dict):
+	return update_settings(body)
+
+@app.get("/status")
+async def status():
+	return {
+		'agent': {'ready': True, 'sessions': len(_clients)},
+		'google': await asyncio.to_thread(google_status),
+	}
+
+@app.post("/auth/google")
+async def auth_google():
+	try:
+		await asyncio.to_thread(force_reauth)
+	except Exception as e:
+		raise HTTPException(status_code=502, detail=f'consent flow failed: {e}')
+	log_activity('SYNC', 'google link re-authorized', 'ui')
+	return {'ok': True}
+
 @app.get("/activity")
 async def activity(limit: int = 200):
 	return read_activity(limit)
@@ -148,6 +182,11 @@ async def move_task(task_id: str, previous: str | None = None):
 	return await run_gcal(lambda: get_service('tasks').tasks().move(
 		tasklist='@default', task=task_id, **kwargs
 	).execute())
+
+@app.delete("/chat/sessions/{user_id}")
+async def chat_close(user_id: str):
+	await close_session(user_id)
+	return {'ok': True}
 
 @app.post("/chat/stream")
 async def chat_stream(request: AgentRequest):

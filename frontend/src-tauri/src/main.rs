@@ -5,6 +5,7 @@ use tauri::{
     tray::TrayIconBuilder,
     Emitter, Manager,
 };
+use tauri_plugin_autostart::MacosLauncher;
 use tauri_plugin_opener::OpenerExt;
 
 fn open_tab(app: &tauri::AppHandle, tab: &str) {
@@ -19,6 +20,10 @@ fn open_tab(app: &tauri::AppHandle, tab: &str) {
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_autostart::init(
+            MacosLauncher::LaunchAgent,
+            None,
+        ))
         .setup(|app| {
             let dashboard = MenuItem::with_id(app, "dashboard", "Dashboard", true, None::<&str>)?;
             let gcal = MenuItem::with_id(app, "gcal", "Open Google Calendar", true, None::<&str>)?;
