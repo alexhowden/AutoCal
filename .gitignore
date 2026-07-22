@@ -211,7 +211,6 @@ learning/
 .DS_Store
 credentials.json
 token.json
-.json
 
 
 # frontend
@@ -239,3 +238,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# tauri
+frontend/src-tauri/target/
+frontend/src-tauri/gen/
