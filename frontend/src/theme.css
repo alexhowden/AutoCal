@@ -713,7 +713,8 @@ body::after {
 
 .note-line b { color: var(--text-hi); font-weight: 700; }
 .note-line em { color: var(--red-bright); }
-.note-line code {
+.note-line code,
+.msg-text code {
   font-size: 13px;
   padding: 0 5px;
   background: var(--bg-input);
@@ -1083,6 +1084,44 @@ textarea.finput { resize: vertical; min-height: 58px; line-height: 1.5; font-fam
 .msg-row.agent .msg-label { color: var(--cyan); }
 
 .msg .file-chip { margin-bottom: 7px; }
+
+.msg-text { white-space: pre-wrap; }
+
+.msg-text.err { color: var(--red-bright); }
+
+.tool-row { display: flex; gap: 6px; flex-wrap: wrap; }
+
+.msg-text + .tool-row,
+.tool-row + .msg-text,
+.msg-text + .msg-text,
+.tool-row + .tool-row { margin-top: 8px; }
+
+.tool-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--cyan);
+  border: 1px solid var(--cyan-dim);
+  background: var(--cyan-ghost);
+}
+
+.chat-empty {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  font-size: 12px;
+  letter-spacing: 0.5px;
+  color: var(--text-low);
+}
 
 .thinking {
   display: flex;

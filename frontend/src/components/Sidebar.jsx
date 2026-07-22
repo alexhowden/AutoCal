@@ -105,7 +105,7 @@ export default function Sidebar({ tab, onSelect }) {
           <span className="dot" /> core: online
         </div>
         <div className="status-row" style={{ paddingLeft: 13 }}>
-          link 127.0.0.1:8000
+          link 127.0.0.1:8787
         </div>
         <svg className="circuit" width="120" height="26" viewBox="0 0 120 26" fill="none" stroke="var(--red-dim)" strokeWidth="1">
           <path d="M2 22h28l8-8h20l6 6h18" />

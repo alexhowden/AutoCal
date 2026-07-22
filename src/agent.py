@@ -11,6 +11,7 @@ from claude_agent_sdk import (
 	ClaudeAgentOptions,
 	ClaudeSDKClient,
 	ResultMessage,
+	StreamEvent,
 	TextBlock,
 	create_sdk_mcp_server,
 	tool,
@@ -37,8 +38,12 @@ def cal_auth():
 
 	if not creds or not creds.valid:
 		if creds and creds.expired and creds.refresh_token:
-			creds.refresh(Request())
-		else:
+			try:
+				creds.refresh(Request())
+			except Exception:
+				creds = None
+
+		if not creds or not creds.valid:
 			creds_path = os.path.join(BASE_DIR, 'credentials.json')
 			flow = InstalledAppFlow.from_client_secrets_file(
 				creds_path, SCOPES
@@ -276,6 +281,8 @@ def build_options():
 	return ClaudeAgentOptions(
 		system_prompt=SYSTEM_PROMPT,
 		mcp_servers={'calendar': calendar_server},
+		include_partial_messages=True,
+		disallowed_tools=['Bash', 'Write', 'Edit', 'NotebookEdit'],
 		allowed_tools=[
 			'WebSearch',
 			'mcp__calendar__get_time',
@@ -288,27 +295,71 @@ def build_options():
 	)
 
 _clients: dict[str, ClaudeSDKClient] = {}
+_locks: dict[str, asyncio.Lock] = {}
 
-async def agent_call(user_id: str, message: str) -> str:
+async def get_client(user_id: str) -> ClaudeSDKClient:
 	client = _clients.get(user_id)
 	if client is None:
 		client = ClaudeSDKClient(options=build_options())
 		await client.connect()
 		_clients[user_id] = client
+	return client
 
-	await client.query(message)
+def display_tool_name(name: str) -> str:
+	return name.removeprefix('mcp__calendar__')
 
-	texts = []
-	final = None
-	async for msg in client.receive_response():
-		if isinstance(msg, AssistantMessage):
-			for block in msg.content:
-				if isinstance(block, TextBlock):
-					texts.append(block.text)
-		elif isinstance(msg, ResultMessage):
-			final = msg.result
+async def agent_stream(user_id: str, message: str):
+	'''Yields event dicts for one agent turn:
+	{'type': 'text', 'text': delta} - streamed text
+	{'type': 'tool', 'name': tool_name} - a tool call started
+	{'type': 'break'} - a new assistant turn started after emitted text
+	{'type': 'done', 'result': full_text}
+	{'type': 'error', 'message': str}
+	'''
+	lock = _locks.setdefault(user_id, asyncio.Lock())
+	async with lock:
+		try:
+			client = await get_client(user_id)
+			await client.query(message)
 
-	return final or '\n'.join(texts)
+			emitted_text = False
+			async for msg in client.receive_response():
+				if isinstance(msg, StreamEvent):
+					ev = msg.event
+					if ev.get('type') == 'content_block_delta':
+						delta = ev.get('delta', {})
+						if delta.get('type') == 'text_delta':
+							yield {'type': 'text', 'text': delta['text']}
+							emitted_text = True
+					elif ev.get('type') == 'content_block_start':
+						block = ev.get('content_block', {})
+						if block.get('type') == 'tool_use' and block.get('name') != 'ToolSearch':
+							yield {'type': 'tool', 'name': display_tool_name(block.get('name', ''))}
+					elif ev.get('type') == 'message_start' and emitted_text:
+						yield {'type': 'break'}
+				elif isinstance(msg, ResultMessage):
+					yield {'type': 'done', 'result': msg.result or ''}
+
+		except Exception as e:
+			yield {'type': 'error', 'message': str(e)}
+
+async def agent_call(user_id: str, message: str) -> str:
+	lock = _locks.setdefault(user_id, asyncio.Lock())
+	async with lock:
+		client = await get_client(user_id)
+		await client.query(message)
+
+		texts = []
+		final = None
+		async for msg in client.receive_response():
+			if isinstance(msg, AssistantMessage):
+				for block in msg.content:
+					if isinstance(block, TextBlock):
+						texts.append(block.text)
+			elif isinstance(msg, ResultMessage):
+				final = msg.result
+
+		return final or '\n'.join(texts)
 
 async def mainloop():
 	while True:

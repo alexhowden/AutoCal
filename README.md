@@ -18,7 +18,7 @@ pip install -r requirements.txt
 5. Set up authentication for Claude (see below)
 6. Run the app either from the command line, or through the frontend interface using:
 ```console
-uvicorn src.server:app --reload --port 8000
+uvicorn src.server:app --reload --port 8787
 
 npm run dev
 ```

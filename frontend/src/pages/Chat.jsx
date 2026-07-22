@@ -1,14 +1,53 @@
 import { useEffect, useRef, useState } from 'react'
 import { Panel, SegBar, PageHead, Corners, HButton } from '../components/ui.jsx'
-import { seedMessages } from '../mock.js'
+import { streamChat, sessionTag } from '../api.js'
+import { inline } from '../md.jsx'
+
+const OFFLINE_MSG =
+  '// LINK OFFLINE - backend not reachable on 127.0.0.1:8787. Start it with: uvicorn src.server:app --port 8787'
 
 function formatSize(bytes) {
   if (bytes > 1048576) return `${(bytes / 1048576).toFixed(1)} MB`
   return `${Math.max(1, Math.round(bytes / 1024))} KB`
 }
 
+// interleave text blocks and tool chips in stream order; consecutive chips share a row
+function renderParts(parts) {
+  const out = []
+  let chips = []
+  let k = 0
+  const flush = () => {
+    if (chips.length) {
+      out.push(
+        <div key={k++} className="tool-row">
+          {chips}
+        </div>
+      )
+      chips = []
+    }
+  }
+  for (const p of parts) {
+    if (p.t === 'tool') {
+      chips.push(
+        <span key={k++} className="tool-chip">
+          ⛭ {p.name}
+        </span>
+      )
+    } else {
+      flush()
+      out.push(
+        <div key={k++} className={`msg-text ${p.err ? 'err' : ''}`}>
+          {p.err ? p.text : inline(p.text)}
+        </div>
+      )
+    }
+  }
+  flush()
+  return out
+}
+
 export default function Chat() {
-  const [messages, setMessages] = useState(seedMessages)
+  const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
   const [files, setFiles] = useState([])
   const [thinking, setThinking] = useState(false)
@@ -29,7 +68,7 @@ export default function Chat() {
     ta.style.height = `${Math.min(ta.scrollHeight, 244)}px`
   }, [input])
 
-  const send = () => {
+  const send = async () => {
     if ((!input.trim() && files.length === 0) || thinking) return
     const mine = {
       id: Date.now(),
@@ -41,17 +80,47 @@ export default function Chat() {
     setInput('')
     setFiles([])
     setThinking(true)
-    setTimeout(() => {
+
+    const replyId = mine.id + 1
+    // update-or-append the streaming agent message, built from ordered parts
+    const patch = (fn) =>
+      setMessages((m) => {
+        const existing = m.find((x) => x.id === replyId)
+        if (!existing) return [...m, { id: replyId, from: 'agent', parts: fn([]) }]
+        return m.map((x) => (x.id === replyId ? { ...x, parts: fn(x.parts) } : x))
+      })
+
+    try {
+      await streamChat(mine.text, (ev) => {
+        patch((parts) => {
+          const last = parts[parts.length - 1]
+          if (ev.type === 'text') {
+            if (last?.t === 'text' && !last.closed)
+              return [...parts.slice(0, -1), { ...last, text: last.text + ev.text }]
+            return [...parts, { t: 'text', text: ev.text }]
+          }
+          if (ev.type === 'tool') return [...parts, { t: 'tool', name: ev.name }]
+          if (ev.type === 'break') {
+            if (last?.t === 'text') return [...parts.slice(0, -1), { ...last, closed: true }]
+            return parts
+          }
+          if (ev.type === 'done') {
+            if (!parts.some((p) => p.t === 'text') && ev.result)
+              return [...parts, { t: 'text', text: ev.result }]
+            return parts
+          }
+          if (ev.type === 'error')
+            return [...parts, { t: 'text', text: `// AGENT ERROR - ${ev.message}`, err: true }]
+          return parts
+        })
+      })
+    } catch {
       setMessages((m) => [
         ...m,
-        {
-          id: Date.now() + 1,
-          from: 'agent',
-          text: '// LINK OFFLINE — this is a UI preview. The agent backend gets wired up next.',
-        },
+        { id: replyId, from: 'agent', parts: [{ t: 'text', text: OFFLINE_MSG, err: true }] },
       ])
-      setThinking(false)
-    }, 1600)
+    }
+    setThinking(false)
   }
 
   const onDrop = (e) => {
@@ -81,10 +150,10 @@ export default function Chat() {
     <>
       <PageHead title="Chat // agent link">
         <span>
-          agent: <span className="c">idle</span>
+          agent: <span className="c">{thinking ? 'active' : 'idle'}</span>
         </span>
         <span>
-          session <b>a3f7</b>
+          session <b>{sessionTag}</b>
         </span>
       </PageHead>
 
@@ -96,6 +165,12 @@ export default function Chat() {
         onDrop={onDrop}
       >
         <div className="chat-scroll" ref={scrollRef}>
+          {messages.length === 0 && (
+            <div className="chat-empty">
+              <span className="tag">Link ready</span>
+              <span>// no transmissions - type a directive below</span>
+            </div>
+          )}
           {messages.map((m) => (
             <div key={m.id} className={`msg-row ${m.from}`}>
               <div className="msg">
@@ -106,7 +181,7 @@ export default function Chat() {
                       ▤ {m.file.name} // {m.file.size}
                     </span>
                   )}
-                  {m.text && <div>{m.text}</div>}
+                  {m.parts ? renderParts(m.parts) : m.text && <div className="msg-text">{m.text}</div>}
                 </div>
               </div>
             </div>
