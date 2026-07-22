@@ -70,11 +70,33 @@ export function WirePanel({ title, right, center = false, className = '', childr
   )
 }
 
+// same six slats as the forge shell: sw 14, slant 16, pitch 23
+const VENT_N = 6
+const VENT_SW = 14
+const VENT_SL = 16
+const VENT_PITCH = 23
+const VENT_W = (VENT_N - 1) * VENT_PITCH + VENT_SW + VENT_SL
+
+function VentStripes({ className }) {
+  return (
+    <svg className={className} viewBox={`0 0 ${VENT_W} ${VENT_SL}`} width={VENT_W} height={VENT_SL}>
+      {Array.from({ length: VENT_N }, (_, i) => (
+        <path
+          key={i}
+          d={`M${i * VENT_PITCH} 0 h${VENT_SW} l${VENT_SL} ${VENT_SL} h-${VENT_SW} Z`}
+          fill="currentColor"
+        />
+      ))}
+    </svg>
+  )
+}
+
 export function VentPanel({ title, right, className = '', bodyClass = '', children }) {
   return (
     <div className={`vp ${className}`}>
       <div className="vp-in">
-        <i className="vp-vents" />
+        <VentStripes className="vp-vents-tr" />
+        <VentStripes className="vp-vents-bl" />
         {(title || right) && (
           <div className="wp-head vent-head">
             <span className="wp-title">{title}</span>

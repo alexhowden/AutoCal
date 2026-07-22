@@ -24,7 +24,7 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
-from .store import get_settings, log_activity
+from .store import get_settings, log_activity, list_accounts, save_accounts
 
 load_dotenv()
 SCOPES = [
@@ -37,9 +37,23 @@ _services: dict[str, object] = {}
 _service_lock = threading.Lock()
 API_VERSIONS = {'calendar': 'v3', 'tasks': 'v1'}
 
-def cal_auth():
+def get_accounts():
+	'''Registry of linked google accounts; migrates the original token.json in place.'''
+	accounts = list_accounts()
+	if not accounts and os.path.exists(os.path.join(BASE_DIR, 'token.json')):
+		accounts = [{'email': '', 'token': 'token.json'}]
+		save_accounts(accounts)
+	return accounts
+
+def _run_consent_flow():
+	creds_path = os.path.join(BASE_DIR, 'credentials.json')
+	flow = InstalledAppFlow.from_client_secrets_file(creds_path, SCOPES)
+	return flow.run_local_server(port=0, timeout_seconds=180)
+
+def account_creds(entry):
+	'''Valid credentials for one account; refreshes silently, re-consents interactively.'''
+	token_path = os.path.join(BASE_DIR, entry['token'])
 	creds = None
-	token_path = os.path.join(BASE_DIR, 'token.json')
 
 	if os.path.exists(token_path):
 		# no scopes arg: creds.scopes must reflect what the token was GRANTED,
@@ -56,48 +70,100 @@ def cal_auth():
 				creds = None
 
 		if not creds or not creds.valid:
-			creds_path = os.path.join(BASE_DIR, 'credentials.json')
-			flow = InstalledAppFlow.from_client_secrets_file(
-				creds_path, SCOPES
-			)
-			creds = flow.run_local_server(port=0, timeout_seconds=180)
+			creds = _run_consent_flow()
 
 		with open(token_path, 'w') as token:
 			token.write(creds.to_json())
 
 	return creds
 
-def get_service(api='calendar'):
+def get_service(api='calendar', account=None):
+	'''Service for one account (by email); defaults to the primary (first linked).'''
+	accounts = get_accounts()
+	if not accounts:
+		raise RuntimeError('no linked google account - use Link account in settings')
+	entry = next((a for a in accounts if a.get('email') == account), accounts[0])
+	key = (entry['token'], api)
 	with _service_lock:
-		if api not in _services:
-			_services[api] = build(api, API_VERSIONS[api], credentials=cal_auth())
-		return _services[api]
+		if key not in _services:
+			_services[key] = build(api, API_VERSIONS[api], credentials=account_creds(entry))
+		return _services[key]
+
+def _email_for(creds):
+	cal = build('calendar', 'v3', credentials=creds).calendarList().get(calendarId='primary').execute()
+	return cal.get('id', '')
 
 def google_status():
-	'''Reports link health WITHOUT ever launching the interactive OAuth flow.'''
-	token_path = os.path.join(BASE_DIR, 'token.json')
-	if not os.path.exists(token_path):
-		return {'connected': False, 'reason': 'no token'}
-	try:
-		creds = Credentials.from_authorized_user_file(token_path)
-		if not creds.scopes or not set(SCOPES).issubset(set(creds.scopes)):
-			return {'connected': False, 'reason': 'missing scopes'}
-		cal = build('calendar', 'v3', credentials=creds).calendarList().get(calendarId='primary').execute()
-		return {
-			'connected': True,
-			'email': cal.get('id', ''),
-			'scopes': [s.rsplit('/', 1)[-1] for s in creds.scopes],
-		}
-	except Exception as e:
-		return {'connected': False, 'reason': str(e)[:120]}
+	'''Per-account link health WITHOUT ever launching the interactive OAuth flow.'''
+	statuses = []
+	accounts = get_accounts()
+	changed = False
+	for entry in accounts:
+		token_path = os.path.join(BASE_DIR, entry['token'])
+		status = {'email': entry.get('email', ''), 'connected': False}
+		try:
+			if not os.path.exists(token_path):
+				status['reason'] = 'no token'
+			else:
+				creds = Credentials.from_authorized_user_file(token_path)
+				if not creds.scopes or not set(SCOPES).issubset(set(creds.scopes)):
+					status['reason'] = 'missing scopes'
+				else:
+					email = _email_for(creds)
+					if email and entry.get('email') != email:
+						entry['email'] = email
+						changed = True
+					status.update(
+						connected=True,
+						email=email,
+						scopes=[s.rsplit('/', 1)[-1] for s in creds.scopes],
+					)
+		except Exception as e:
+			status['reason'] = str(e)[:120]
+		statuses.append(status)
+	if changed:
+		save_accounts(accounts)
+	return statuses
 
-def force_reauth():
-	'''Runs a fresh consent flow (browser popup) and swaps the services over.'''
-	creds_path = os.path.join(BASE_DIR, 'credentials.json')
-	flow = InstalledAppFlow.from_client_secrets_file(creds_path, SCOPES)
-	creds = flow.run_local_server(port=0, timeout_seconds=180)
-	with open(os.path.join(BASE_DIR, 'token.json'), 'w') as token:
+def link_account():
+	'''Runs a consent flow; whichever account the user picks gets linked (or re-linked).'''
+	creds = _run_consent_flow()
+	email = _email_for(creds)
+	accounts = get_accounts()
+	entry = next((a for a in accounts if a.get('email') == email), None)
+	if entry is None:
+		os.makedirs(os.path.join(BASE_DIR, 'data'), exist_ok=True)
+		entry = {'email': email, 'token': f'data/token-{len(accounts) + 1}.json'}
+		accounts.append(entry)
+	with open(os.path.join(BASE_DIR, entry['token']), 'w') as token:
 		token.write(creds.to_json())
+	save_accounts(accounts)
+	with _service_lock:
+		_services.clear()
+	return email
+
+def unlink_account(email):
+	'''Drops an account: revokes the grant (best effort), deletes the token, updates the registry.'''
+	accounts = get_accounts()
+	entry = next((a for a in accounts if a.get('email') == email), None)
+	if entry is None:
+		return False
+	token_path = os.path.join(BASE_DIR, entry['token'])
+	try:
+		import requests
+		creds = Credentials.from_authorized_user_file(token_path)
+		requests.post(
+			'https://oauth2.googleapis.com/revoke',
+			params={'token': creds.refresh_token or creds.token},
+			timeout=10,
+		)
+	except Exception:
+		pass
+	try:
+		os.remove(token_path)
+	except FileNotFoundError:
+		pass
+	save_accounts([a for a in accounts if a.get('email') != email])
 	with _service_lock:
 		_services.clear()
 	return True
@@ -150,14 +216,25 @@ async def get_time(args):
 	},
 )
 async def cal_view_events(args):
+	def op():
+		merged = []
+		for acct in get_accounts():
+			email = acct.get('email', '')
+			events = get_service(account=email).events().list(
+				calendarId='primary',
+				timeMin=args['timeMin'],
+				maxResults=args.get('maxResults', 10),
+				singleEvents=True,
+				orderBy='startTime'
+			).execute()
+			for ev in events.get('items', []):
+				ev['account'] = email
+				merged.append(ev)
+		merged.sort(key=lambda e: e['start'].get('dateTime', e['start'].get('date', '')))
+		return {'items': merged}
+
 	return await gcal(
-		lambda: get_service().events().list(
-			calendarId='primary',
-			timeMin=args['timeMin'],
-			maxResults=args.get('maxResults', 10),
-			singleEvents=True,
-			orderBy='startTime'
-		).execute(),
+		op,
 		log=lambda r: ('SEARCH', f"scanned from {args['timeMin'][:16]} // {len(r.get('items', []))} results"),
 	)
 
@@ -190,6 +267,7 @@ async def cal_view_events(args):
 				'description': "list of attendee emails, e.g. [{'email': 'lpage@example.com'}], will usually be empty",
 			},
 			'colorId': {'type': 'string', 'description': 'color of the event, see tool description for guidelines'},
+			'account': {'type': 'string', 'description': 'email of the google account to use; omit for the primary account'},
 		},
 		'required': ['summary', 'timeMin', 'timeMax', 'colorId'],
 	},
@@ -217,7 +295,7 @@ async def cal_add_event(args):
 	}
 
 	return await gcal(
-		lambda: get_service().events().insert(calendarId='primary', body=body).execute(),
+		lambda: get_service(account=args.get('account')).events().insert(calendarId='primary', body=body).execute(),
 		log=lambda r: ('CREATE', f"EVT {r.get('summary')} // {r['start'].get('dateTime', '')[:16]} // colorId {r.get('colorId', '-')}"),
 	)
 
@@ -228,12 +306,13 @@ async def cal_add_event(args):
 		'type': 'object',
 		'properties': {
 			'eventId': {'type': 'string'},
+			'account': {'type': 'string', 'description': 'email of the google account to use; omit for the primary account'},
 		},
 		'required': ['eventId'],
 	},
 )
 async def cal_get_event(args):
-	return await gcal(lambda: get_service().events().get(calendarId='primary', eventId=args['eventId']).execute())
+	return await gcal(lambda: get_service(account=args.get('account')).events().get(calendarId='primary', eventId=args['eventId']).execute())
 
 @tool(
 	'cal_edit_event',
@@ -245,6 +324,7 @@ async def cal_get_event(args):
 		'type': 'object',
 		'properties': {
 			'eventId': {'type': 'string'},
+			'account': {'type': 'string', 'description': 'email of the google account to use; omit for the primary account'},
 			'summary': {'type': 'string'},
 			'location': {'type': 'string'},
 			'description': {'type': 'string'},
@@ -278,7 +358,7 @@ async def cal_edit_event(args):
 		body['end'] = {'dateTime': args['timeMax'], 'timeZone': timezone}
 
 	return await gcal(
-		lambda: get_service().events().patch(calendarId='primary', eventId=args['eventId'], body=body).execute(),
+		lambda: get_service(account=args.get('account')).events().patch(calendarId='primary', eventId=args['eventId'], body=body).execute(),
 		log=lambda r: ('EDIT', f"EVT {r.get('summary')} updated"),
 	)
 
@@ -289,13 +369,14 @@ async def cal_edit_event(args):
 		'type': 'object',
 		'properties': {
 			'eventId': {'type': 'string'},
+			'account': {'type': 'string', 'description': 'email of the google account to use; omit for the primary account'},
 		},
 		'required': ['eventId'],
 	},
 )
 async def cal_delete_event(args):
 	def op():
-		get_service().events().delete(calendarId='primary', eventId=args['eventId']).execute()
+		get_service(account=args.get('account')).events().delete(calendarId='primary', eventId=args['eventId']).execute()
 		return 'Event successfully deleted.'
 	return await gcal(op, log=lambda r: ('DELETE', f"EVT {args['eventId']} removed"))
 
@@ -326,6 +407,16 @@ def build_options():
 		'Event color protocol - colorId to use when the user does not specify a color:\n'
 		f"{proto}\n- {cats[-1]['colorId']} for anything that fits no category\n"
 	)
+	accounts = get_accounts()
+	if len(accounts) > 1:
+		names = ', '.join(
+			f"{a.get('email') or 'unknown'}{' (primary)' if i == 0 else ''}" for i, a in enumerate(accounts)
+		)
+		prompt += (
+			f"Linked google accounts: {names}. cal_view_events merges all of them and tags each event "
+			"with its account. Pass the account param to create/edit/delete on a specific account; "
+			"the primary is used when omitted. Match the account to the context (school vs personal).\n"
+		)
 	if settings['conflictCheck']:
 		prompt += CONFLICT_CLAUSE
 	return ClaudeAgentOptions(

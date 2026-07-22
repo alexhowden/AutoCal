@@ -10,9 +10,11 @@ from .agent import (
 	agent_call,
 	agent_stream,
 	close_session,
+	get_accounts,
 	get_service,
 	google_status,
-	force_reauth,
+	link_account,
+	unlink_account,
 	_clients,
 )
 from .store import (
@@ -57,31 +59,41 @@ async def run_gcal(op):
 
 @app.get("/events")
 async def list_events(timeMin: str, timeMax: str, maxResults: int = 250):
-	result = await run_gcal(lambda: get_service().events().list(
-		calendarId='primary',
-		timeMin=timeMin,
-		timeMax=timeMax,
-		maxResults=maxResults,
-		singleEvents=True,
-		orderBy='startTime',
-	).execute())
-	return result.get('items', [])
+	def op():
+		merged = []
+		for acct in get_accounts():
+			email = acct.get('email', '')
+			result = get_service(account=email).events().list(
+				calendarId='primary',
+				timeMin=timeMin,
+				timeMax=timeMax,
+				maxResults=maxResults,
+				singleEvents=True,
+				orderBy='startTime',
+			).execute()
+			for ev in result.get('items', []):
+				ev['account'] = email
+				merged.append(ev)
+		merged.sort(key=lambda e: e['start'].get('dateTime', e['start'].get('date', '')))
+		return merged
+
+	return await run_gcal(op)
 
 EVENT_PATCH_FIELDS = {'summary', 'location', 'description', 'start', 'end', 'colorId', 'recurrence', 'attendees'}
 
 @app.patch("/events/{event_id}")
-async def patch_event(event_id: str, body: dict):
+async def patch_event(event_id: str, body: dict, account: str | None = None):
 	body = {k: v for k, v in body.items() if k in EVENT_PATCH_FIELDS}
-	event = await run_gcal(lambda: get_service().events().patch(
+	event = await run_gcal(lambda: get_service(account=account).events().patch(
 		calendarId='primary', eventId=event_id, body=body
 	).execute())
 	log_activity('EDIT', f"EVT {event.get('summary')} updated", 'ui')
 	return event
 
 @app.delete("/events/{event_id}")
-async def delete_event(event_id: str):
+async def delete_event(event_id: str, account: str | None = None):
 	def op():
-		get_service().events().delete(calendarId='primary', eventId=event_id).execute()
+		get_service(account=account).events().delete(calendarId='primary', eventId=event_id).execute()
 		return {'ok': True}
 	result = await run_gcal(op)
 	log_activity('DELETE', f'EVT {event_id} removed', 'ui')
@@ -146,10 +158,18 @@ async def status():
 @app.post("/auth/google")
 async def auth_google():
 	try:
-		await asyncio.to_thread(force_reauth)
+		email = await asyncio.to_thread(link_account)
 	except Exception as e:
 		raise HTTPException(status_code=502, detail=f'consent flow failed: {e}')
-	log_activity('SYNC', 'google link re-authorized', 'ui')
+	log_activity('SYNC', f'google account {email} linked', 'ui')
+	return {'ok': True, 'email': email}
+
+@app.delete("/accounts/{email}")
+async def account_unlink(email: str):
+	removed = await asyncio.to_thread(unlink_account, email)
+	if not removed:
+		raise HTTPException(status_code=404, detail='account not linked')
+	log_activity('SYNC', f'google account {email} unlinked', 'ui')
 	return {'ok': True}
 
 @app.get("/activity")

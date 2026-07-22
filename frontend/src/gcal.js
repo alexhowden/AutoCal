@@ -83,6 +83,7 @@ export function toItem(ev) {
     startISO: ev.start?.dateTime || ev.start?.date,
     endISO: ev.end?.dateTime || ev.end?.date,
     link: ev.htmlLink,
+    account: ev.account || '',
   }
 }
 

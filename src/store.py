@@ -27,6 +27,14 @@ def _write(name, data):
 		json.dump(data, f, indent=1)
 	os.replace(tmp, _path(name))
 
+def list_accounts():
+	with _lock:
+		return _read('accounts.json', [])
+
+def save_accounts(accounts):
+	with _lock:
+		_write('accounts.json', accounts)
+
 DEFAULT_SETTINGS = {
 	'timezone': 'America/New_York',
 	'conflictCheck': True,

@@ -581,7 +581,7 @@ body::after {
 .vp {
   padding: 1px;
   background: var(--red-line);
-  clip-path: polygon(12px 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%, 0 12px);
+  clip-path: polygon(12px 0, calc(100% - 26px) 0, 100% 26px, 100% calc(100% - 12px), calc(100% - 12px) 100%, 26px 100%, 0 calc(100% - 26px), 0 12px);
   filter: drop-shadow(0 0 7px rgb(255 42 69 / calc(0.14 * var(--glow-mult))));
 }
 
@@ -589,24 +589,24 @@ body::after {
   position: relative;
   height: 100%;
   background: linear-gradient(175deg, var(--bg-raised), var(--bg-panel) 55%);
-  clip-path: polygon(12px 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%, 0 12px);
+  clip-path: polygon(12px 0, calc(100% - 26px) 0, 100% 26px, 100% calc(100% - 12px), calc(100% - 12px) 100%, 26px 100%, 0 calc(100% - 26px), 0 12px);
   padding: 14px 16px;
   display: flex;
   flex-direction: column;
 }
 
-.vp-vents {
+.vp-vents-tr,
+.vp-vents-bl {
   position: absolute;
-  top: 10px;
-  right: 12px;
-  width: 66px;
-  height: 14px;
-  background: repeating-linear-gradient(45deg, var(--red) 0 5px, transparent 5px 13px);
-  clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 100%, 14px 100%);
+  color: var(--red);
   filter: drop-shadow(0 0 5px rgb(255 42 69 / calc(0.6 * var(--glow-mult))));
 }
 
-.vent-head { padding-right: 84px; }
+.vp-vents-tr { top: 10px; right: 18px; }
+
+.vp-vents-bl { bottom: 10px; left: 18px; }
+
+.vent-head { padding-right: 170px; }
 
 .vp-body { flex: 1; min-height: 0; margin-top: 12px; }
 
@@ -1453,6 +1453,10 @@ textarea.finput { resize: vertical; min-height: 58px; line-height: 1.5; font-fam
 
 .filter-row { display: flex; gap: 8px; }
 
+.filter-spacer { flex: 1; }
+
+.nav-chip { padding: 4px 11px; font-size: 14px; line-height: 1; }
+
 .filter-chip {
   padding: 4px 12px;
   font-family: var(--font-display);
@@ -1525,7 +1529,7 @@ textarea.finput { resize: vertical; min-height: 58px; line-height: 1.5; font-fam
 
 .sess-new { color: var(--cyan); border-style: dashed; }
 
-.log-list { display: flex; flex-direction: column; font-size: 13px; }
+.log-list { display: flex; flex-direction: column; font-size: 13px; padding-bottom: 34px; }
 
 .log-line {
   position: relative;

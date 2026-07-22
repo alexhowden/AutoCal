@@ -14,11 +14,39 @@ const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', '
 
 const fmt = (h) => `${String(Math.floor(h)).padStart(2, '0')}:${h % 1 ? '30' : '00'}`
 
-function weekStart() {
-  const d = new Date()
+function weekStartOf(date) {
+  const d = new Date(date)
   d.setHours(0, 0, 0, 0)
   d.setDate(d.getDate() - ((d.getDay() + 6) % 7))
   return d
+}
+
+// google-calendar-style overlap handling: cluster overlapping events, assign
+// columns greedily within the cluster, split the lane width equally
+function layoutDay(events) {
+  const sorted = [...events].sort((a, b) => a.startH - b.startH || b.endH - a.endH)
+  const placed = []
+  let cluster = []
+  let colEnds = []
+  let clusterEnd = -1
+  const flush = () => {
+    if (!cluster.length) return
+    const n = colEnds.length
+    cluster.forEach((e) => (e.ncols = n))
+    placed.push(...cluster)
+    cluster = []
+    colEnds = []
+  }
+  for (const e of sorted) {
+    if (cluster.length && e.startH >= clusterEnd) flush()
+    let col = colEnds.findIndex((end) => e.startH >= end)
+    if (col === -1) col = colEnds.length
+    colEnds[col] = e.endH
+    cluster.push({ ...e, col })
+    clusterEnd = cluster.length === 1 ? e.endH : Math.max(clusterEnd, e.endH)
+  }
+  flush()
+  return placed
 }
 
 function isoWeekNum(date) {
@@ -49,13 +77,15 @@ function DayColumn({ label, events, allDayItems, isToday, nowHour, detailed, onS
         {hours.map((h) => (
           <i key={h} className="cal-line" style={{ top: (h - DAY_START) * HOUR_PX }} />
         ))}
-        {events.map((e) => (
+        {layoutDay(events).map((e) => (
           <div
             key={e.id}
             className={`cal-event ${isAccent(e.cat) ? 'important' : ''} ${e.endH - e.startH <= 0.8 ? 'short' : ''}`}
             style={{
               top: (e.startH - DAY_START) * HOUR_PX + 1,
               height: (e.endH - e.startH) * HOUR_PX - 4,
+              left: `calc(${(e.col * 100) / e.ncols}% + 3px)`,
+              width: `calc(${100 / e.ncols}% - 6px)`,
             }}
             onClick={() => onSelect({ ...e, dayLabel: label })}
           >
@@ -78,8 +108,27 @@ export default function Calendar() {
   const [linkDown, setLinkDown] = useState(false)
   const [selected, setSelected] = useState(null)
   const [editing, setEditing] = useState(null)
+  const [anchor, setAnchor] = useState(() => {
+    const d = new Date()
+    d.setHours(0, 0, 0, 0)
+    return d
+  })
 
-  const start = weekStart()
+  const shift = (dir) =>
+    setAnchor((a) => {
+      const d = new Date(a)
+      d.setDate(d.getDate() + dir * (view === 'week' ? 7 : 1))
+      return d
+    })
+
+  const goToday = () => {
+    const d = new Date()
+    d.setHours(0, 0, 0, 0)
+    setAnchor(d)
+  }
+
+  const start = weekStartOf(anchor)
+  const anchorIndex = Math.round((anchor - start) / 86400000)
   const todayMid = new Date()
   todayMid.setHours(0, 0, 0, 0)
   const todayIndex = Math.round((todayMid - start) / 86400000)
@@ -111,7 +160,7 @@ export default function Calendar() {
 
   useEffect(() => {
     refresh()
-  }, [])
+  }, [+start])
 
   // position timed events on the grid, clamped to visible hours
   const dayIndexOf = (it) => Math.round((new Date(it.startISO).setHours(0, 0, 0, 0) - start) / 86400000)
@@ -125,12 +174,12 @@ export default function Calendar() {
     }))
   const allDay = items.filter((it) => it.allDay)
 
-  const days = view === 'week' ? weekDays.map((_, i) => i) : [todayIndex]
+  const days = view === 'week' ? weekDays.map((_, i) => i) : [anchorIndex]
 
   const saveItem = async (updated) => {
     setEditing(null)
     try {
-      await patchEvent(updated.id, toPatch(updated))
+      await patchEvent(updated.id, toPatch(updated), updated.account)
     } catch {
       setLinkDown(true)
     }
@@ -138,10 +187,11 @@ export default function Calendar() {
   }
 
   const deleteItem = async (id) => {
+    const account = (editing ?? selected)?.account
     setEditing(null)
     setSelected(null)
     try {
-      await deleteEvent(id)
+      await deleteEvent(id, account)
     } catch {
       setLinkDown(true)
     }
@@ -150,7 +200,7 @@ export default function Calendar() {
 
   return (
     <>
-      <PageHead title={`Calendar // week ${isoWeekNum(new Date())}`}>
+      <PageHead title={`Calendar // week ${isoWeekNum(anchor)}`}>
         <span>{range}</span>
         <span>tz {TZ.toLowerCase()}</span>
         {linkDown && <span className="tag warn">link offline</span>}
@@ -166,10 +216,20 @@ export default function Calendar() {
             {v}
           </button>
         ))}
+        <span className="filter-spacer" />
+        <button className="filter-chip nav-chip" onClick={() => shift(-1)}>
+          ‹
+        </button>
+        <button className="filter-chip" onClick={goToday}>
+          today
+        </button>
+        <button className="filter-chip nav-chip" onClick={() => shift(1)}>
+          ›
+        </button>
       </div>
 
       <VentPanel
-        title={view === 'week' ? 'Grid // 7 day' : `Grid // ${weekDays[todayIndex] || 'today'}`}
+        title={view === 'week' ? 'Grid // 7 day' : `Grid // ${weekDays[anchorIndex]}`}
         right={
           <>
             <span>{timed.length} events</span>
@@ -233,6 +293,12 @@ export default function Calendar() {
                 <span className="k">Type</span>
                 <span className={tagClass(selected.cat)}>{selected.cat}</span>
               </div>
+              {selected.account && (
+                <div className="cal-drow">
+                  <span className="k">Account</span>
+                  {selected.account}
+                </div>
+              )}
               <div className="cal-dbtns">
                 <HButton small onClick={() => setEditing(selected)}>
                   Edit

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Panel, PageHead, Toggle, HButton, CyberSelect } from '../components/ui.jsx'
-import { getSettings, patchSettings, getStatus, reauthGoogle } from '../api.js'
+import { getSettings, patchSettings, getStatus, reauthGoogle, unlinkAccount } from '../api.js'
 import { useFx } from '../fx.jsx'
 import { PALETTE, getCats, setCats } from '../gcal.js'
 
@@ -172,6 +172,15 @@ export default function Settings() {
     refreshStatus()
   }
 
+  const unlink = async (email) => {
+    try {
+      await unlinkAccount(email)
+    } catch {
+      setLinkDown(true)
+    }
+    refreshStatus()
+  }
+
   const google = status?.google
   const agent = status?.agent
 
@@ -210,25 +219,49 @@ export default function Settings() {
               {agent ? (agent.ready ? 'ready' : 'offline') : '...'}
             </span>
           </div>
-          <div className="setting-row">
-            <div>
-              <div className="setting-name">Google Calendar</div>
-              <div className="setting-desc">
-                {google
-                  ? google.connected
-                    ? `${google.email} // ${google.scopes.join(' + ')}`
-                    : `not linked // ${google.reason}`
-                  : '...'}
+          {(google ?? [{ email: '', connected: false, reason: '...' }]).map((g, i) => (
+            <div key={i} className="setting-row">
+              <div>
+                <div className="setting-name">
+                  Google Calendar{google?.length > 1 ? ` // ${i === 0 ? 'primary' : 'linked'}` : ''}
+                </div>
+                <div className="setting-desc">
+                  {g.connected
+                    ? `${g.email} // ${g.scopes.join(' + ')}`
+                    : `${g.email || 'account'} // ${g.reason}`}
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                <span className={`tag ${g.connected ? 'cyan' : 'warn'}`}>
+                  {g.connected ? 'connected' : 'not linked'}
+                </span>
+                {g.email && (
+                  <HButton small onClick={() => unlink(g.email)}>
+                    Unlink
+                  </HButton>
+                )}
               </div>
             </div>
-            <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-              <span className={`tag ${google?.connected ? 'cyan' : 'warn'}`}>
-                {google ? (google.connected ? 'connected' : 'not linked') : '...'}
-              </span>
-              <HButton small onClick={reauth} disabled={reauthing}>
-                {reauthing ? 'Check browser...' : 'Re-auth'}
-              </HButton>
+          ))}
+          {google?.length === 0 && (
+            <div className="setting-row">
+              <div>
+                <div className="setting-name">Google Calendar</div>
+                <div className="setting-desc">no accounts linked</div>
+              </div>
+              <span className="tag warn">not linked</span>
             </div>
+          )}
+          <div className="setting-row">
+            <div>
+              <div className="setting-name">Link account</div>
+              <div className="setting-desc">
+                add another google account or re-auth an existing one - tasks stay on primary
+              </div>
+            </div>
+            <HButton small onClick={reauth} disabled={reauthing}>
+              {reauthing ? 'Check browser...' : 'Link account'}
+            </HButton>
           </div>
         </Panel>
 

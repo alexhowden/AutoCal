@@ -84,7 +84,7 @@ export default function Dashboard() {
     setEditing(null)
     try {
       if (updated.type === 'task') await patchTask(updated.id, toTaskPatch(updated))
-      else await patchEvent(updated.id, toPatch(updated))
+      else await patchEvent(updated.id, toPatch(updated), updated.account)
     } catch {
       setLinkDown(true)
     }
@@ -93,10 +93,11 @@ export default function Dashboard() {
 
   const deleteItem = async (id) => {
     const wasTask = editing?.type === 'task'
+    const account = editing?.account
     setEditing(null)
     try {
       if (wasTask) await deleteTask(id)
-      else await deleteEvent(id)
+      else await deleteEvent(id, account)
     } catch {
       setLinkDown(true)
     }

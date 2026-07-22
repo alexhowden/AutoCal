@@ -9,14 +9,17 @@ async function req(path, opts) {
 export const getEvents = (timeMin, timeMax) =>
   req(`/events?timeMin=${encodeURIComponent(timeMin)}&timeMax=${encodeURIComponent(timeMax)}`)
 
-export const patchEvent = (id, body) =>
-  req(`/events/${encodeURIComponent(id)}`, {
+const acctQ = (account) => (account ? `?account=${encodeURIComponent(account)}` : '')
+
+export const patchEvent = (id, body, account) =>
+  req(`/events/${encodeURIComponent(id)}${acctQ(account)}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
 
-export const deleteEvent = (id) => req(`/events/${encodeURIComponent(id)}`, { method: 'DELETE' })
+export const deleteEvent = (id, account) =>
+  req(`/events/${encodeURIComponent(id)}${acctQ(account)}`, { method: 'DELETE' })
 
 const json = (body) => ({ headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
 
@@ -54,6 +57,8 @@ export const getStatus = () => req('/status')
 export const reauthGoogle = () => req('/auth/google', { method: 'POST' })
 
 export const closeChatSession = (id) => req(`/chat/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' })
+
+export const unlinkAccount = (email) => req(`/accounts/${encodeURIComponent(email)}`, { method: 'DELETE' })
 
 // POST to an SSE endpoint and invoke onEvent for each parsed `data:` payload;
 // the backend keys agent conversations on sessionId
