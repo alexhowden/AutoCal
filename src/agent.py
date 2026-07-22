@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os.path
+import threading
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -28,6 +29,7 @@ SCOPES = ['https://www.googleapis.com/auth/calendar']
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 _service = None
+_service_lock = threading.Lock()
 
 def cal_auth():
 	creds = None
@@ -48,7 +50,7 @@ def cal_auth():
 			flow = InstalledAppFlow.from_client_secrets_file(
 				creds_path, SCOPES
 			)
-			creds = flow.run_local_server(port=0)
+			creds = flow.run_local_server(port=0, timeout_seconds=180)
 
 		with open(token_path, 'w') as token:
 			token.write(creds.to_json())
@@ -57,9 +59,18 @@ def cal_auth():
 
 def get_service():
 	global _service
-	if _service is None:
-		_service = build('calendar', 'v3', credentials=cal_auth())
-	return _service
+	with _service_lock:
+		if _service is None:
+			_service = build('calendar', 'v3', credentials=cal_auth())
+		return _service
+
+async def gcal(op):
+	'''Runs blocking Google API work off the event loop so a slow call
+	(or a pending OAuth consent) never freezes the server.'''
+	try:
+		return tool_result(await asyncio.to_thread(op))
+	except HttpError as error:
+		return tool_result(f'An error occurred: {error}')
 
 def tool_result(data):
 	text = data if isinstance(data, str) else json.dumps(data)
@@ -93,18 +104,13 @@ async def get_time(args):
 	},
 )
 async def cal_view_events(args):
-	try:
-		events = get_service().events().list(
-			calendarId='primary',
-			timeMin=args['timeMin'],
-			maxResults=args.get('maxResults', 10),
-			singleEvents=True,
-			orderBy='startTime'
-		).execute()
-		return tool_result(events)
-
-	except HttpError as error:
-		return tool_result(f'An error occurred: {error}')
+	return await gcal(lambda: get_service().events().list(
+		calendarId='primary',
+		timeMin=args['timeMin'],
+		maxResults=args.get('maxResults', 10),
+		singleEvents=True,
+		orderBy='startTime'
+	).execute())
 
 @tool(
 	'cal_add_event',
@@ -146,32 +152,27 @@ async def cal_view_events(args):
 	},
 )
 async def cal_add_event(args):
-	try:
-		body = {
-			'summary': args['summary'],
-			'location': args.get('location', ''),
-			'description': args.get('description', ''),
-			'start': {
-				'dateTime': args['timeMin'],
-				'timeZone': args.get('timezone', 'America/New_York'),
-			},
-			'end': {
-				'dateTime': args['timeMax'],
-				'timeZone': args.get('timezone', 'America/New_York'),
-			},
-			'recurrence': args.get('recurrence', []),
-			'attendees': args.get('attendees', []),
-			'reminders': {
-				'useDefault': True,
-			},
-			'colorId': args['colorId']
-		}
+	body = {
+		'summary': args['summary'],
+		'location': args.get('location', ''),
+		'description': args.get('description', ''),
+		'start': {
+			'dateTime': args['timeMin'],
+			'timeZone': args.get('timezone', 'America/New_York'),
+		},
+		'end': {
+			'dateTime': args['timeMax'],
+			'timeZone': args.get('timezone', 'America/New_York'),
+		},
+		'recurrence': args.get('recurrence', []),
+		'attendees': args.get('attendees', []),
+		'reminders': {
+			'useDefault': True,
+		},
+		'colorId': args['colorId']
+	}
 
-		event = get_service().events().insert(calendarId='primary', body=body).execute()
-		return tool_result(f'Event created: {event}')
-
-	except HttpError as error:
-		return tool_result(f'An error occurred: {error}')
+	return await gcal(lambda: get_service().events().insert(calendarId='primary', body=body).execute())
 
 @tool(
 	'cal_get_event',
@@ -185,12 +186,7 @@ async def cal_add_event(args):
 	},
 )
 async def cal_get_event(args):
-	try:
-		event = get_service().events().get(calendarId='primary', eventId=args['eventId']).execute()
-		return tool_result(event)
-
-	except HttpError as error:
-		return tool_result(f'An error occurred: {error}')
+	return await gcal(lambda: get_service().events().get(calendarId='primary', eventId=args['eventId']).execute())
 
 @tool(
 	'cal_edit_event',
@@ -223,23 +219,18 @@ async def cal_get_event(args):
 	},
 )
 async def cal_edit_event(args):
-	try:
-		body = {}
-		for key in ('summary', 'location', 'description', 'recurrence', 'attendees', 'colorId'):
-			if key in args:
-				body[key] = args[key]
+	body = {}
+	for key in ('summary', 'location', 'description', 'recurrence', 'attendees', 'colorId'):
+		if key in args:
+			body[key] = args[key]
 
-		timezone = args.get('timezone', 'America/New_York')
-		if 'timeMin' in args:
-			body['start'] = {'dateTime': args['timeMin'], 'timeZone': timezone}
-		if 'timeMax' in args:
-			body['end'] = {'dateTime': args['timeMax'], 'timeZone': timezone}
+	timezone = args.get('timezone', 'America/New_York')
+	if 'timeMin' in args:
+		body['start'] = {'dateTime': args['timeMin'], 'timeZone': timezone}
+	if 'timeMax' in args:
+		body['end'] = {'dateTime': args['timeMax'], 'timeZone': timezone}
 
-		event = get_service().events().patch(calendarId='primary', eventId=args['eventId'], body=body).execute()
-		return tool_result(event)
-
-	except HttpError as error:
-		return tool_result(f'An error occurred: {error}')
+	return await gcal(lambda: get_service().events().patch(calendarId='primary', eventId=args['eventId'], body=body).execute())
 
 @tool(
 	'cal_delete_event',
@@ -253,12 +244,10 @@ async def cal_edit_event(args):
 	},
 )
 async def cal_delete_event(args):
-	try:
+	def op():
 		get_service().events().delete(calendarId='primary', eventId=args['eventId']).execute()
-		return tool_result('Event successfully deleted.')
-
-	except HttpError as error:
-		return tool_result(f'An error occurred: {error}')
+		return 'Event successfully deleted.'
+	return await gcal(op)
 
 calendar_server = create_sdk_mcp_server(
 	name='calendar',

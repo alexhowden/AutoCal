@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { FxProvider, useFx } from './fx.jsx'
+import { ChatProvider } from './chat.jsx'
 import Sidebar from './components/Sidebar.jsx'
 import Dashboard from './pages/Dashboard.jsx'
 import Calendar from './pages/Calendar.jsx'
@@ -99,7 +100,9 @@ function AppInner() {
 export default function App() {
   return (
     <FxProvider>
-      <AppInner />
+      <ChatProvider>
+        <AppInner />
+      </ChatProvider>
     </FxProvider>
   )
 }
