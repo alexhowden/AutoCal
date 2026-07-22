@@ -14,6 +14,7 @@ from .agent import (
 	get_service,
 	google_status,
 	link_account,
+	set_primary_account,
 	unlink_account,
 	_clients,
 )
@@ -80,6 +81,15 @@ async def list_events(timeMin: str, timeMax: str, maxResults: int = 250):
 	return await run_gcal(op)
 
 EVENT_PATCH_FIELDS = {'summary', 'location', 'description', 'start', 'end', 'colorId', 'recurrence', 'attendees'}
+
+@app.post("/events")
+async def create_event(body: dict, account: str | None = None):
+	body = {k: v for k, v in body.items() if k in EVENT_PATCH_FIELDS}
+	event = await run_gcal(lambda: get_service(account=account).events().insert(
+		calendarId='primary', body=body
+	).execute())
+	log_activity('CREATE', f"EVT {event.get('summary')} // {event['start'].get('dateTime', event['start'].get('date', ''))[:16]}", 'ui')
+	return event
 
 @app.patch("/events/{event_id}")
 async def patch_event(event_id: str, body: dict, account: str | None = None):
@@ -163,6 +173,13 @@ async def auth_google():
 		raise HTTPException(status_code=502, detail=f'consent flow failed: {e}')
 	log_activity('SYNC', f'google account {email} linked', 'ui')
 	return {'ok': True, 'email': email}
+
+@app.post("/accounts/{email}/primary")
+async def account_primary(email: str):
+	if not await asyncio.to_thread(set_primary_account, email):
+		raise HTTPException(status_code=404, detail='account not linked')
+	log_activity('SYNC', f'{email} set as primary account', 'ui')
+	return {'ok': True}
 
 @app.delete("/accounts/{email}")
 async def account_unlink(email: str):

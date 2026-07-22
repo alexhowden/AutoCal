@@ -82,7 +82,7 @@ def get_service(api='calendar', account=None):
 	accounts = get_accounts()
 	if not accounts:
 		raise RuntimeError('no linked google account - use Link account in settings')
-	entry = next((a for a in accounts if a.get('email') == account), accounts[0])
+	entry = next((a for a in accounts if a.get('email') == account), primary_of(accounts))
 	key = (entry['token'], api)
 	with _service_lock:
 		if key not in _services:
@@ -97,10 +97,11 @@ def google_status():
 	'''Per-account link health WITHOUT ever launching the interactive OAuth flow.'''
 	statuses = []
 	accounts = get_accounts()
+	prim = primary_of(accounts)
 	changed = False
 	for entry in accounts:
 		token_path = os.path.join(BASE_DIR, entry['token'])
-		status = {'email': entry.get('email', ''), 'connected': False}
+		status = {'email': entry.get('email', ''), 'connected': False, 'primary': entry is prim}
 		try:
 			if not os.path.exists(token_path):
 				status['reason'] = 'no token'
@@ -141,6 +142,22 @@ def link_account():
 	with _service_lock:
 		_services.clear()
 	return email
+
+def primary_of(accounts):
+	'''The primary account: flagged entry, else the first linked. Registry order never changes.'''
+	if not accounts:
+		return None
+	return next((a for a in accounts if a.get('primary')), accounts[0])
+
+def set_primary_account(email):
+	'''Flags an account as primary - the default for agent writes and tasks.'''
+	accounts = get_accounts()
+	if not any(a.get('email') == email for a in accounts):
+		return False
+	for a in accounts:
+		a['primary'] = a.get('email') == email
+	save_accounts(accounts)
+	return True
 
 def unlink_account(email):
 	'''Drops an account: revokes the grant (best effort), deletes the token, updates the registry.'''
@@ -205,31 +222,47 @@ async def get_time(args):
 
 @tool(
 	'cal_view_events',
-	"Returns the next events on the user's calendar starting at timeMin (RFC3339 format). Defaults to 10 results if no number specified.",
+	'''Returns events across all linked calendars between timeMin and timeMax (RFC3339 format).
+	ALWAYS pass timeMax to bound the window to what the user asked about (e.g. end of the requested day).''',
 	{
 		'type': 'object',
 		'properties': {
 			'timeMin': {'type': 'string', 'description': 'start of the search window, RFC3339 format'},
-			'maxResults': {'type': 'integer', 'description': 'number of events to return, default 10'},
+			'timeMax': {'type': 'string', 'description': 'end of the search window, RFC3339 format - always set this'},
+			'maxResults': {'type': 'integer', 'description': 'max events per account, default 25'},
 		},
 		'required': ['timeMin'],
 	},
 )
 async def cal_view_events(args):
+	def slim(ev, email):
+		desc = ev.get('description', '')
+		return {
+			'id': ev.get('id'),
+			'summary': ev.get('summary'),
+			'start': ev.get('start'),
+			'end': ev.get('end'),
+			'location': ev.get('location', ''),
+			'description': desc[:200] + ('...' if len(desc) > 200 else ''),
+			'colorId': ev.get('colorId'),
+			'account': email,
+		}
+
 	def op():
+		kwargs = {
+			'calendarId': 'primary',
+			'timeMin': args['timeMin'],
+			'maxResults': args.get('maxResults', 25),
+			'singleEvents': True,
+			'orderBy': 'startTime',
+		}
+		if args.get('timeMax'):
+			kwargs['timeMax'] = args['timeMax']
 		merged = []
 		for acct in get_accounts():
 			email = acct.get('email', '')
-			events = get_service(account=email).events().list(
-				calendarId='primary',
-				timeMin=args['timeMin'],
-				maxResults=args.get('maxResults', 10),
-				singleEvents=True,
-				orderBy='startTime'
-			).execute()
-			for ev in events.get('items', []):
-				ev['account'] = email
-				merged.append(ev)
+			events = get_service(account=email).events().list(**kwargs).execute()
+			merged.extend(slim(ev, email) for ev in events.get('items', []))
 		merged.sort(key=lambda e: e['start'].get('dateTime', e['start'].get('date', '')))
 		return {'items': merged}
 
@@ -409,8 +442,9 @@ def build_options():
 	)
 	accounts = get_accounts()
 	if len(accounts) > 1:
+		prim = primary_of(accounts)
 		names = ', '.join(
-			f"{a.get('email') or 'unknown'}{' (primary)' if i == 0 else ''}" for i, a in enumerate(accounts)
+			f"{a.get('email') or 'unknown'}{' (primary)' if a is prim else ''}" for a in accounts
 		)
 		prompt += (
 			f"Linked google accounts: {names}. cal_view_events merges all of them and tags each event "

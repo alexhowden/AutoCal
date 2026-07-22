@@ -1,7 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Panel, PageHead, Toggle, HButton, CyberSelect } from '../components/ui.jsx'
-import { getSettings, patchSettings, getStatus, reauthGoogle, unlinkAccount } from '../api.js'
+import {
+  getSettings,
+  patchSettings,
+  getStatus,
+  reauthGoogle,
+  unlinkAccount,
+  setPrimaryAccount,
+} from '../api.js'
 import { useFx } from '../fx.jsx'
 import { PALETTE, getCats, setCats } from '../gcal.js'
 
@@ -181,6 +188,15 @@ export default function Settings() {
     refreshStatus()
   }
 
+  const makePrimary = async (email) => {
+    try {
+      await setPrimaryAccount(email)
+    } catch {
+      setLinkDown(true)
+    }
+    refreshStatus()
+  }
+
   const google = status?.google
   const agent = status?.agent
 
@@ -223,7 +239,7 @@ export default function Settings() {
             <div key={i} className="setting-row">
               <div>
                 <div className="setting-name">
-                  Google Calendar{google?.length > 1 ? ` // ${i === 0 ? 'primary' : 'linked'}` : ''}
+                  Google Calendar{google?.length > 1 ? ` // ${g.primary ? 'primary' : 'linked'}` : ''}
                 </div>
                 <div className="setting-desc">
                   {g.connected
@@ -235,6 +251,11 @@ export default function Settings() {
                 <span className={`tag ${g.connected ? 'cyan' : 'warn'}`}>
                   {g.connected ? 'connected' : 'not linked'}
                 </span>
+                {g.email && !g.primary && (
+                  <HButton small onClick={() => makePrimary(g.email)}>
+                    Make primary
+                  </HButton>
+                )}
                 {g.email && (
                   <HButton small onClick={() => unlink(g.email)}>
                     Unlink

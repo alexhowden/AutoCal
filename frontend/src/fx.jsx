@@ -1,5 +1,9 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 
+// module evaluates once at app boot - the sidebar loop animations start here,
+// so anything that wants to phase-lock to them measures against this
+export const APP_T0 = performance.now()
+
 const defaults = { embers: true, sweep: true, tabPulse: true, glow: 1 }
 
 const FxContext = createContext({ fx: defaults, setFx: () => {} })

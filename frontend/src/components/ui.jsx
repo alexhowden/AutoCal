@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 
 export function Corners() {
@@ -188,37 +188,6 @@ export function SegBar({ frac = 0, count = 22, pulse = false, hot = 0 }) {
           />
         )
       })}
-    </div>
-  )
-}
-
-export function RingGauge({ value, max, label, cyan = false }) {
-  const r = 34
-  const c = 2 * Math.PI * r
-  const frac = Math.min(max ? value / max : 0, 1)
-  return (
-    <div className="ring">
-      <div className="ring-wrap">
-        <svg viewBox="0 0 84 84" width="84" height="84">
-          <circle className="ring-track" cx="42" cy="42" r={r} />
-          <circle
-            className={`ring-arc ${cyan ? 'cyan' : ''}`}
-            cx="42"
-            cy="42"
-            r={r}
-            stroke={cyan ? 'var(--cyan-data)' : 'var(--red)'}
-            strokeDasharray={`${c * frac} ${c}`}
-            transform="rotate(-90 42 42)"
-          />
-        </svg>
-        <div className="ring-center">
-          <span className="ring-val">
-            {value}
-            <span className="ring-max">/{max}</span>
-          </span>
-        </div>
-      </div>
-      {label && <span className="ring-label">{label}</span>}
     </div>
   )
 }

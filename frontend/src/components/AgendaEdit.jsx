@@ -25,7 +25,7 @@ export default function AgendaEdit({ item, onSave, onDelete, onClose }) {
     <div className="cal-detail-backdrop" onClick={onClose}>
       <div className="cal-detail wide" onClick={(e) => e.stopPropagation()}>
         <NodePanel
-          title={isTask ? 'Task // edit' : 'Event // edit'}
+          title={isTask ? 'Task // edit' : item.isNew ? 'Event // new' : 'Event // edit'}
           right={
             <button className="cal-x" onClick={onClose}>
               ✕
@@ -108,10 +108,12 @@ export default function AgendaEdit({ item, onSave, onDelete, onClose }) {
             </label>
 
             <div className="ebtns">
-              <HButton small onClick={() => onDelete(item.id)}>
-                Delete
-              </HButton>
-              {!isTask && (
+              {!item.isNew && (
+                <HButton small onClick={() => onDelete(item.id)}>
+                  Delete
+                </HButton>
+              )}
+              {!isTask && !item.isNew && (
                 <HButton small onClick={() => item.link && window.open(item.link, '_blank')}>
                   Open in GCal
                 </HButton>

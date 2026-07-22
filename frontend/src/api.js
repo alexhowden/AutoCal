@@ -11,6 +11,13 @@ export const getEvents = (timeMin, timeMax) =>
 
 const acctQ = (account) => (account ? `?account=${encodeURIComponent(account)}` : '')
 
+export const createEvent = (body, account) =>
+  req(`/events${acctQ(account)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+
 export const patchEvent = (id, body, account) =>
   req(`/events/${encodeURIComponent(id)}${acctQ(account)}`, {
     method: 'PATCH',
@@ -59,6 +66,9 @@ export const reauthGoogle = () => req('/auth/google', { method: 'POST' })
 export const closeChatSession = (id) => req(`/chat/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' })
 
 export const unlinkAccount = (email) => req(`/accounts/${encodeURIComponent(email)}`, { method: 'DELETE' })
+
+export const setPrimaryAccount = (email) =>
+  req(`/accounts/${encodeURIComponent(email)}/primary`, { method: 'POST' })
 
 // POST to an SSE endpoint and invoke onEvent for each parsed `data:` payload;
 // the backend keys agent conversations on sessionId

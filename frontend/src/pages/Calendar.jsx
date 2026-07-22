@@ -220,8 +220,18 @@ export default function Calendar() {
         <button className="filter-chip nav-chip" onClick={() => shift(-1)}>
           ‹
         </button>
-        <button className="filter-chip" onClick={goToday}>
-          today
+        <button
+          className="filter-chip"
+          title="back to today"
+          onClick={goToday}
+        >
+          {view === 'week'
+            ? todayIndex >= 0 && todayIndex <= 6
+              ? 'this week'
+              : range
+            : +anchor === +todayMid
+              ? 'today'
+              : weekDays[anchorIndex]}
         </button>
         <button className="filter-chip nav-chip" onClick={() => shift(1)}>
           ›

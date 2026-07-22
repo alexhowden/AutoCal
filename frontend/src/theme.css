@@ -538,6 +538,7 @@ body::after {
 /* ---------- wire spine panel (F5) ---------- */
 
 .wp {
+  position: relative;
   padding: 1px;
   background: var(--red-line);
   clip-path: polygon(12px 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%, 0 12px);
@@ -547,7 +548,8 @@ body::after {
 .wp-in {
   position: relative;
   height: 100%;
-  background: linear-gradient(175deg, var(--bg-raised), var(--bg-panel) 55%);
+  /* same maroon interior as the inactive sidebar tabs */
+  background: linear-gradient(175deg, #3a0c16, #22070e 60%);
   clip-path: polygon(12px 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%, 0 12px);
   padding: 14px 16px 14px 40px;
   display: flex;
@@ -845,61 +847,219 @@ body::after {
 
 /* ---------- ring gauge ---------- */
 
-.ring { display: flex; flex-direction: column; align-items: center; gap: 6px; position: relative; }
-
-.ring-wrap { position: relative; width: 84px; height: 84px; }
-
-.ring-track { fill: none; stroke: rgb(255 255 255 / 0.13); stroke-width: 7; }
-
-.ring-arc {
-  fill: none;
-  stroke-width: 7;
-  stroke-linecap: butt;
-  filter: drop-shadow(0 0 5px rgb(255 42 69 / calc(0.6 * var(--glow-mult))));
-}
-
-.ring-arc.cyan { filter: drop-shadow(0 0 5px rgb(34 211 238 / calc(0.6 * var(--glow-mult)))); }
-
-.ring-center {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  font-family: var(--font-display);
-}
-
-.ring-val { font-size: 21px; font-weight: 700; color: var(--text-hi); line-height: 1; }
-.ring-max { font-size: 13px; font-weight: 400; color: var(--text-low); }
-
-.ring-label {
-  font-family: var(--font-display);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 2px;
-  text-transform: uppercase;
-  color: var(--text-mid);
-}
-
-/* ---------- dashboard ---------- */
-
 .stat-row {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: 14px;
 }
 
-.load-panel {
+.gauge-card {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  justify-content: center;
-  height: 100%;
+  align-items: center;
+  gap: 2px;
 }
 
-.load-top { display: flex; justify-content: space-between; align-items: baseline; }
-.load-pct { font-family: var(--font-display); font-size: 24px; font-weight: 700; color: var(--text-hi); }
+/* schedule load boost gauge */
+.boost {
+  transform: translateZ(0);
+  will-change: transform;
+}
+
+.boost-track {
+  fill: none;
+  stroke: rgb(255 255 255 / 0.14);
+  stroke-width: 3;
+}
+
+.boost-redzone {
+  fill: none;
+  stroke: var(--red);
+  stroke-width: 3;
+  filter: drop-shadow(0 0 4px rgb(255 42 69 / calc(0.7 * var(--glow-mult))));
+}
+
+.boost-tick { stroke: rgb(255 255 255 / 0.25); stroke-width: 1.2; }
+
+.boost-tick.major { stroke: rgb(255 255 255 / 0.55); stroke-width: 1.8; }
+
+.boost-tick.hot { stroke: var(--red-bright); }
+
+.boost-num {
+  fill: var(--text-mid);
+  font-family: var(--font-display);
+  font-size: 8.5px;
+  font-weight: 600;
+  text-anchor: middle;
+  dominant-baseline: central;
+}
+
+.boost-num.hot { fill: var(--red-bright); }
+
+.boost-label {
+  fill: var(--text-low);
+  font-family: var(--font-display);
+  font-size: 6.5px;
+  font-weight: 600;
+  letter-spacing: 2.5px;
+  text-anchor: middle;
+}
+
+.boost-needle { transform-origin: 60px 60px; }
+
+.boost-needle path {
+  fill: var(--red);
+  filter: drop-shadow(0 0 4px rgb(255 42 69 / calc(0.6 * var(--glow-mult))));
+}
+
+.boost-hub {
+  fill: #0a0a0f;
+  stroke: var(--red);
+  stroke-width: 2;
+}
+
+.boost-val {
+  fill: var(--text-hi);
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 700;
+  text-anchor: middle;
+}
+
+/* gauge pulse: lit pieces replay the load sweep each 6s cycle, phase-locked
+   to the sidebar loop via --pd + per-piece inline animation-delay */
+.wp-pulse .ret-seg.lit { animation: segwave 6s linear infinite; }
+
+@keyframes segwave {
+  0% { stroke: currentColor; }
+  3% { stroke: #ffffff; filter: drop-shadow(0 0 8px currentColor); }
+  13% { stroke: currentColor; }
+  100% { stroke: currentColor; }
+}
+
+.wp-pulse .orb-arc {
+  animation: orbwave 6s linear infinite;
+  animation-delay: var(--pd, 0ms);
+}
+
+@keyframes orbwave {
+  0% { stroke: currentColor; }
+  3% { stroke: #ffffff; filter: drop-shadow(0 0 9px currentColor); }
+  14% { stroke: currentColor; }
+  100% { stroke: currentColor; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wp-pulse .ret-seg.lit,
+  .wp-pulse .orb-arc { animation: none; }
+}
+
+/* reticle gauge (events) */
+.ret-hair { fill: none; stroke: rgb(255 255 255 / 0.14); stroke-width: 0.75; }
+
+.ret-hair.inner { stroke: rgb(255 255 255 / 0.1); }
+
+.ret-tick { stroke: rgb(255 255 255 / 0.18); stroke-width: 0.8; }
+
+.ret-tick.major { stroke: rgb(255 255 255 / 0.4); stroke-width: 1.2; }
+
+.ret-seg {
+  fill: none;
+  stroke: rgb(255 255 255 / 0.1);
+  stroke-width: 6;
+  transition: stroke .25s, filter .25s;
+}
+
+.ret-seg.lit {
+  stroke: currentColor;
+  filter: drop-shadow(0 0 3px currentColor);
+}
+
+.ret-core {
+  fill: rgb(255 42 69 / 0.16);
+  stroke: rgb(255 42 69 / 0.35);
+  stroke-width: 1;
+  transition: opacity .8s;
+  filter: drop-shadow(0 0 10px rgb(255 42 69 / calc(0.5 * var(--glow-mult))));
+}
+
+.ret-spin {
+  transform-origin: 60px 60px;
+  animation: retspin 22s linear infinite;
+}
+
+.ret-accent {
+  fill: none;
+  stroke: var(--red-bright);
+  stroke-width: 1.5;
+  stroke-dasharray: 6 10;
+  opacity: 0.55;
+}
+
+@keyframes retspin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.ret-node { fill: var(--red); }
+
+.ret-val {
+  fill: var(--text-hi);
+  font-size: 23px;
+  font-weight: 700;
+  text-anchor: middle;
+  font-family: var(--font-display);
+}
+
+.ret-val .ret-max { fill: var(--text-low); font-size: 12px; font-weight: 400; }
+
+.ret-label {
+  fill: var(--text-low);
+  font-family: var(--font-display);
+  font-size: 6.5px;
+  font-weight: 600;
+  letter-spacing: 2.5px;
+  text-anchor: middle;
+}
+
+/* style C - orbital demo */
+.orb-cross { stroke: rgb(255 255 255 / 0.12); stroke-width: 0.8; }
+
+.orb-track { fill: none; stroke: rgb(255 255 255 / 0.1); stroke-width: 7; }
+
+.orb-arc {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 7;
+  filter: drop-shadow(0 0 4px currentColor);
+  transition: stroke-dasharray .9s cubic-bezier(.22, 1, .36, 1);
+}
+
+.orb-head {
+  fill: #ffffff;
+  filter: drop-shadow(0 0 6px currentColor);
+  transition: cx .9s cubic-bezier(.22, 1, .36, 1), cy .9s cubic-bezier(.22, 1, .36, 1);
+}
+
+.orb-spin {
+  transform-origin: 60px 60px;
+  animation: retspin 30s linear infinite reverse;
+}
+
+.orb-dash {
+  fill: none;
+  stroke: currentColor;
+  opacity: 0.45;
+  stroke-width: 1.2;
+  stroke-dasharray: 4 9;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ret-spin,
+  .orb-spin { animation: none; }
+}
+
+
 
 .agenda-list { display: flex; flex-direction: column; }
 
@@ -920,7 +1080,7 @@ body::after {
 
 .agenda-time {
   font-size: 13px;
-  color: var(--text-low);
+  color: var(--text-hi);
   text-align: right;
 }
 
@@ -1146,6 +1306,16 @@ textarea.finput { resize: vertical; min-height: 58px; line-height: 1.5; font-fam
 }
 
 .task-row .checkbox { cursor: pointer; }
+
+.task-date {
+  margin-left: auto;
+  font-size: 11px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--text-low);
+}
+
+.task-row .task-date ~ .grip { margin-left: 12px; }
 
 .task-name { cursor: pointer; }
 
