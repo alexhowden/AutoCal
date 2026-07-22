@@ -1,11 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import Dict
-import uvicorn
 from .agent import agent_call
-
-state_store: Dict[str, dict] = {}
 
 app = FastAPI()
 
@@ -26,8 +22,5 @@ class AgentResponse(BaseModel):
 
 @app.post("/chat", response_model=AgentResponse)
 async def chat(request: AgentRequest):
-	reply = agent_call(request.user_id, request.message, state_store)
+	reply = await agent_call(request.user_id, request.message)
 	return AgentResponse(reply=reply)
-
-if __name__ == "__main__":
-	uvicorn.run(app, host="0.0.0.0", port=8000, reload=True)
