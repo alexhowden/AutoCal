@@ -69,6 +69,9 @@ export default function Dashboard() {
   const now = new Date()
   const nowPos = items.filter((it) => !it.allDay && it.time && it.time <= hm(now)).length
 
+  // events already behind you today - mirrors the tasks done/total ring
+  const pastEvents = events.filter((e) => !e.allDay && new Date(e.endISO) <= now).length
+
   // schedule load: booked hours across timed events
   const bookedMs = items
     .filter((it) => !it.allDay)
@@ -165,12 +168,11 @@ export default function Dashboard() {
             sync <span className="c">{syncedAt || '...'}</span>
           </span>
         )}
-        <span>link 127.0.0.1:8787</span>
       </PageHead>
 
       <div className="stat-row">
         <WirePanel title="Events" center>
-          <RingGauge value={events.length} max={8} />
+          <RingGauge value={pastEvents} max={events.length} />
         </WirePanel>
         <WirePanel title="Tasks" center>
           <RingGauge value={tasksDone} max={allTasks.length} cyan />

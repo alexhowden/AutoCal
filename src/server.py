@@ -7,6 +7,14 @@ from fastapi.responses import StreamingResponse
 from googleapiclient.errors import HttpError
 from pydantic import BaseModel
 from .agent import agent_call, agent_stream, get_service
+from .store import (
+	log_activity,
+	read_activity,
+	list_notes,
+	create_note,
+	update_note,
+	delete_note,
+)
 
 app = FastAPI()
 
@@ -54,16 +62,20 @@ EVENT_PATCH_FIELDS = {'summary', 'location', 'description', 'start', 'end', 'col
 @app.patch("/events/{event_id}")
 async def patch_event(event_id: str, body: dict):
 	body = {k: v for k, v in body.items() if k in EVENT_PATCH_FIELDS}
-	return await run_gcal(lambda: get_service().events().patch(
+	event = await run_gcal(lambda: get_service().events().patch(
 		calendarId='primary', eventId=event_id, body=body
 	).execute())
+	log_activity('EDIT', f"EVT {event.get('summary')} updated", 'ui')
+	return event
 
 @app.delete("/events/{event_id}")
 async def delete_event(event_id: str):
 	def op():
 		get_service().events().delete(calendarId='primary', eventId=event_id).execute()
 		return {'ok': True}
-	return await run_gcal(op)
+	result = await run_gcal(op)
+	log_activity('DELETE', f'EVT {event_id} removed', 'ui')
+	return result
 
 TASK_FIELDS = {'title', 'notes', 'due', 'status', 'completed'}
 
@@ -81,23 +93,54 @@ async def list_tasks():
 @app.post("/tasks")
 async def create_task(body: dict):
 	body = {k: v for k, v in body.items() if k in TASK_FIELDS}
-	return await run_gcal(lambda: get_service('tasks').tasks().insert(
+	task = await run_gcal(lambda: get_service('tasks').tasks().insert(
 		tasklist='@default', body=body
 	).execute())
+	log_activity('CREATE', f"TASK {task.get('title')}", 'ui')
+	return task
 
 @app.patch("/tasks/{task_id}")
 async def patch_task(task_id: str, body: dict):
 	body = {k: v for k, v in body.items() if k in TASK_FIELDS}
-	return await run_gcal(lambda: get_service('tasks').tasks().patch(
+	task = await run_gcal(lambda: get_service('tasks').tasks().patch(
 		tasklist='@default', task=task_id, body=body
 	).execute())
+	verb = 'completed' if task.get('status') == 'completed' else 'updated'
+	log_activity('EDIT', f"TASK {task.get('title')} {verb}", 'ui')
+	return task
 
 @app.delete("/tasks/{task_id}")
 async def delete_task(task_id: str):
 	def op():
 		get_service('tasks').tasks().delete(tasklist='@default', task=task_id).execute()
 		return {'ok': True}
-	return await run_gcal(op)
+	result = await run_gcal(op)
+	log_activity('DELETE', f'TASK {task_id} removed', 'ui')
+	return result
+
+@app.get("/activity")
+async def activity(limit: int = 200):
+	return read_activity(limit)
+
+@app.get("/notes")
+async def notes_index():
+	return list_notes()
+
+@app.post("/notes")
+async def notes_create(body: dict):
+	return create_note(body.get('text', ''))
+
+@app.patch("/notes/{note_id}")
+async def notes_update(note_id: str, body: dict):
+	note = update_note(note_id, body.get('text', ''))
+	if note is None:
+		raise HTTPException(status_code=404, detail='note not found')
+	return note
+
+@app.delete("/notes/{note_id}")
+async def notes_delete(note_id: str):
+	delete_note(note_id)
+	return {'ok': True}
 
 @app.post("/tasks/{task_id}/move")
 async def move_task(task_id: str, previous: str | None = None):

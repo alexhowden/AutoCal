@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { VentPanel, PageHead, Corners } from '../components/ui.jsx'
-import { activityLog } from '../mock.js'
+import { getActivity } from '../api.js'
+import { localDate } from '../gcal.js'
 
-const kinds = ['ALL', 'CREATE', 'EDIT', 'DELETE', 'IMPORT']
+const kinds = ['ALL', 'CREATE', 'EDIT', 'DELETE', 'SEARCH']
 
 const kindTag = {
   CREATE: 'tag bright',
@@ -14,7 +15,15 @@ const kindTag = {
 }
 
 export default function Activity() {
+  const [log, setLog] = useState([])
+  const [linkDown, setLinkDown] = useState(false)
   const [sel, setSel] = useState(() => new Set(['ALL']))
+
+  useEffect(() => {
+    getActivity()
+      .then(setLog)
+      .catch(() => setLinkDown(true))
+  }, [])
 
   const toggle = (k) => {
     setSel((prev) => {
@@ -27,15 +36,18 @@ export default function Activity() {
     })
   }
 
-  const lines = activityLog.filter((l) => sel.has('ALL') || sel.has(l.kind))
+  const today = localDate(new Date())
+  const opsToday = log.filter((l) => l.ts.slice(0, 10) === today).length
+  const lines = log.filter((l) => sel.has('ALL') || sel.has(l.kind))
 
   return (
     <>
       <PageHead title="Activity // operation log">
-        <span>{activityLog.length} ops today</span>
+        <span>{opsToday} ops today</span>
         <span>
-          retention <b>30d</b>
+          retention <b>500 ops</b>
         </span>
+        {linkDown && <span className="tag warn">link offline</span>}
       </PageHead>
 
       <div className="filter-row">
@@ -50,17 +62,22 @@ export default function Activity() {
         ))}
       </div>
 
-      <VentPanel title="Log // 2026-07-21">
+      <VentPanel title={`Log // ${today}`}>
         <div className="log-list">
           {lines.map((l, i) => (
             <div key={i} className="log-line hover-ck">
               <Corners />
-              <span className="log-time">{l.time}</span>
-              <span className={kindTag[l.kind]}>{l.kind}</span>
-              <span className="log-text" dangerouslySetInnerHTML={{ __html: l.text }} />
+              <span className="log-time">{l.ts.slice(11, 19)}</span>
+              <span className={kindTag[l.kind] || 'tag'}>{l.kind}</span>
+              <span className="log-text">{l.text}</span>
+              <span className="log-src">{l.source}</span>
             </div>
           ))}
-          {lines.length === 0 && <div className="micro" style={{ padding: 12 }}>no operations match this filter</div>}
+          {lines.length === 0 && (
+            <div className="micro" style={{ padding: 12 }}>
+              {linkDown ? 'link offline' : log.length === 0 ? 'no operations logged yet' : 'no operations match this filter'}
+            </div>
+          )}
         </div>
       </VentPanel>
     </>

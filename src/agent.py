@@ -24,6 +24,8 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
+from .store import log_activity
+
 load_dotenv()
 SCOPES = [
 	'https://www.googleapis.com/auth/calendar',
@@ -71,11 +73,19 @@ def get_service(api='calendar'):
 			_services[api] = build(api, API_VERSIONS[api], credentials=cal_auth())
 		return _services[api]
 
-async def gcal(op):
+async def gcal(op, log=None):
 	'''Runs blocking Google API work off the event loop so a slow call
-	(or a pending OAuth consent) never freezes the server.'''
+	(or a pending OAuth consent) never freezes the server.
+	log: optional result -> (kind, text) for the activity feed, on success only.'''
 	try:
-		return tool_result(await asyncio.to_thread(op))
+		result = await asyncio.to_thread(op)
+		if log:
+			try:
+				kind, text = log(result)
+				log_activity(kind, text, 'agent')
+			except Exception:
+				pass
+		return tool_result(result)
 	except HttpError as error:
 		return tool_result(f'An error occurred: {error}')
 
@@ -111,13 +121,16 @@ async def get_time(args):
 	},
 )
 async def cal_view_events(args):
-	return await gcal(lambda: get_service().events().list(
-		calendarId='primary',
-		timeMin=args['timeMin'],
-		maxResults=args.get('maxResults', 10),
-		singleEvents=True,
-		orderBy='startTime'
-	).execute())
+	return await gcal(
+		lambda: get_service().events().list(
+			calendarId='primary',
+			timeMin=args['timeMin'],
+			maxResults=args.get('maxResults', 10),
+			singleEvents=True,
+			orderBy='startTime'
+		).execute(),
+		log=lambda r: ('SEARCH', f"scanned from {args['timeMin'][:16]} // {len(r.get('items', []))} results"),
+	)
 
 @tool(
 	'cal_add_event',
@@ -179,7 +192,10 @@ async def cal_add_event(args):
 		'colorId': args['colorId']
 	}
 
-	return await gcal(lambda: get_service().events().insert(calendarId='primary', body=body).execute())
+	return await gcal(
+		lambda: get_service().events().insert(calendarId='primary', body=body).execute(),
+		log=lambda r: ('CREATE', f"EVT {r.get('summary')} // {r['start'].get('dateTime', '')[:16]} // colorId {r.get('colorId', '-')}"),
+	)
 
 @tool(
 	'cal_get_event',
@@ -237,7 +253,10 @@ async def cal_edit_event(args):
 	if 'timeMax' in args:
 		body['end'] = {'dateTime': args['timeMax'], 'timeZone': timezone}
 
-	return await gcal(lambda: get_service().events().patch(calendarId='primary', eventId=args['eventId'], body=body).execute())
+	return await gcal(
+		lambda: get_service().events().patch(calendarId='primary', eventId=args['eventId'], body=body).execute(),
+		log=lambda r: ('EDIT', f"EVT {r.get('summary')} updated"),
+	)
 
 @tool(
 	'cal_delete_event',
@@ -254,7 +273,7 @@ async def cal_delete_event(args):
 	def op():
 		get_service().events().delete(calendarId='primary', eventId=args['eventId']).execute()
 		return 'Event successfully deleted.'
-	return await gcal(op)
+	return await gcal(op, log=lambda r: ('DELETE', f"EVT {args['eventId']} removed"))
 
 calendar_server = create_sdk_mcp_server(
 	name='calendar',
@@ -301,6 +320,8 @@ async def get_client(user_id: str) -> ClaudeSDKClient:
 		_clients[user_id] = client
 	return client
 
+HARNESS_TOOLS = {'ToolSearch', 'Agent', 'Task', 'TodoWrite'}
+
 def display_tool_name(name: str) -> str:
 	return name.removeprefix('mcp__calendar__')
 
@@ -329,7 +350,8 @@ async def agent_stream(user_id: str, message: str):
 							emitted_text = True
 					elif ev.get('type') == 'content_block_start':
 						block = ev.get('content_block', {})
-						if block.get('type') == 'tool_use' and block.get('name') != 'ToolSearch':
+						# harness-internal tools are noise in the chat transcript
+						if block.get('type') == 'tool_use' and block.get('name') not in HARNESS_TOOLS:
 							yield {'type': 'tool', 'name': display_tool_name(block.get('name', ''))}
 					elif ev.get('type') == 'message_start' and emitted_text:
 						yield {'type': 'break'}

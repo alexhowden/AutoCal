@@ -211,6 +211,7 @@ learning/
 .DS_Store
 credentials.json
 token.json
+data/
 
 
 # frontend

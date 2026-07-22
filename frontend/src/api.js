@@ -38,6 +38,17 @@ export const moveTask = (id, previous) =>
     method: 'POST',
   })
 
+export const getActivity = () => req('/activity')
+
+export const getNotes = () => req('/notes')
+
+export const createNote = (text) => req('/notes', { method: 'POST', ...json({ text }) })
+
+export const patchNote = (id, text) =>
+  req(`/notes/${encodeURIComponent(id)}`, { method: 'PATCH', ...json({ text }) })
+
+export const deleteNoteApi = (id) => req(`/notes/${encodeURIComponent(id)}`, { method: 'DELETE' })
+
 // POST to an SSE endpoint and invoke onEvent for each parsed `data:` payload
 export async function streamChat(message, onEvent) {
   const res = await fetch(`${API}/chat/stream`, {

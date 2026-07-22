@@ -623,7 +623,7 @@ body::after {
 
 .note-row {
   position: relative;
-  padding: 8px 26px 8px 10px;
+  padding: 8px 38px 8px 10px;
   border: 1px solid transparent;
   border-left: 2px solid transparent;
   cursor: pointer;
@@ -651,20 +651,46 @@ body::after {
 
 .note-x {
   position: absolute;
-  right: 6px;
+  right: 8px;
   top: 50%;
   transform: translateY(-50%);
-  background: none;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(175deg, rgb(255 42 69 / 0.1), rgb(255 42 69 / 0.03));
   border: none;
   font: inherit;
-  font-size: 12px;
-  color: var(--text-low);
+  font-size: 13px;
+  line-height: 1;
+  color: var(--text-mid);
   cursor: pointer;
   opacity: 0;
-  transition: opacity .12s;
+  transition: opacity .12s, color .12s;
 }
+
+/* mini corner brackets - same family as the h-buttons */
+.note-x::before,
+.note-x::after {
+  content: '';
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  border: 2px solid var(--red);
+  transition: border-color .12s;
+}
+
+.note-x::before { top: 0; left: 0; border-right: none; border-bottom: none; }
+
+.note-x::after { bottom: 0; right: 0; border-left: none; border-top: none; }
+
 .note-row:hover .note-x { opacity: 1; }
+
 .note-x:hover { color: var(--red-bright); }
+
+.note-x:hover::before,
+.note-x:hover::after { border-color: var(--red-bright); }
 
 .note-editor {
   height: 100%;
@@ -1455,7 +1481,7 @@ textarea.finput { resize: vertical; min-height: 58px; line-height: 1.5; font-fam
 .log-line {
   position: relative;
   display: grid;
-  grid-template-columns: 72px 76px 1fr;
+  grid-template-columns: 72px 76px 1fr auto;
   gap: 14px;
   align-items: baseline;
   padding: 8px 10px;
@@ -1468,6 +1494,13 @@ textarea.finput { resize: vertical; min-height: 58px; line-height: 1.5; font-fam
 
 .log-text { color: var(--text-mid); line-height: 1.5; overflow-wrap: anywhere; }
 .log-text b { color: var(--text-hi); font-weight: 500; }
+
+.log-src {
+  font-size: 11px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--text-low);
+}
 
 /* ---------- settings ---------- */
 

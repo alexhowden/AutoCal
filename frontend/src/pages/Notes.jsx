@@ -1,42 +1,22 @@
 import { useEffect, useRef, useState } from 'react'
 import { NodePanel, PageHead, HButton } from '../components/ui.jsx'
+import { getNotes, createNote, patchNote, deleteNoteApi } from '../api.js'
+import { localDate, hm } from '../gcal.js'
 import { inline } from '../md.jsx'
 
-const seedNotes = [
-  {
-    id: 1,
-    meta: 'today 18:12',
-    lines: [
-      '# fall planning',
-      '',
-      '## courses',
-      '- [x] ECE 2300 // digital logic',
-      '- [ ] CS 4820 // algorithms',
-      '- [ ] swap discussion section',
-      '',
-      '## goals',
-      'keep **gpa** above *3.7* and actually sleep',
-      '> register before jul 30 or pay the late fee',
-      '---',
-      'drop the syllabus into `chat` and let the agent extract the deadlines',
-    ],
-  },
-  {
-    id: 2,
-    meta: 'yesterday',
-    lines: [
-      '# project ideas',
-      '- autocal syllabus import',
-      '- tray quick add with natural language',
-      '- weekly load report, *auto-generated*',
-    ],
-  },
-  {
-    id: 3,
-    meta: 'jul 18',
-    lines: ['# quick capture', 'ask prof chen about the regrade window', 'gym after 20:00 tue/thu'],
-  },
-]
+const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec']
+
+function metaOf(updated) {
+  const d = new Date(updated)
+  const today = localDate(new Date())
+  const yesterday = new Date()
+  yesterday.setDate(yesterday.getDate() - 1)
+  if (localDate(d) === today) return `today ${hm(d)}`
+  if (localDate(d) === localDate(yesterday)) return 'yesterday'
+  return `${MONTHS[d.getMonth()]} ${d.getDate()}`
+}
+
+const fromApi = (n) => ({ id: n.id, lines: n.text.split('\n'), meta: metaOf(n.updated) })
 
 function parseLine(text) {
   let m
@@ -85,14 +65,25 @@ const noteTitle = (note) => {
 }
 
 export default function Notes() {
-  const [notes, setNotes] = useState(seedNotes)
-  const [activeId, setActiveId] = useState(1)
+  const [notes, setNotes] = useState([])
+  const [activeId, setActiveId] = useState(null)
+  const [linkDown, setLinkDown] = useState(false)
   const [lineIdx, setLineIdx] = useState(null)
   const caretRef = useRef(0)
   const inputRef = useRef(null)
+  const dirtyRef = useRef(new Set())
 
   const note = notes.find((n) => n.id === activeId)
   const lines = note ? note.lines : []
+
+  useEffect(() => {
+    getNotes()
+      .then((ns) => {
+        setNotes(ns.map(fromApi))
+        if (ns.length) setActiveId(ns[0].id)
+      })
+      .catch(() => setLinkDown(true))
+  }, [])
 
   useEffect(() => {
     if (lineIdx === null || !inputRef.current) return
@@ -102,8 +93,24 @@ export default function Notes() {
     el.setSelectionRange(c, c)
   }, [lineIdx, activeId])
 
-  const setLines = (fn) =>
+  // debounced autosave of any note touched since the last flush
+  useEffect(() => {
+    if (dirtyRef.current.size === 0) return
+    const t = setTimeout(() => {
+      const ids = [...dirtyRef.current]
+      dirtyRef.current.clear()
+      ids.forEach((id) => {
+        const n = notes.find((x) => x.id === id)
+        if (n) patchNote(id, n.lines.join('\n')).catch(() => setLinkDown(true))
+      })
+    }, 800)
+    return () => clearTimeout(t)
+  }, [notes])
+
+  const setLines = (fn) => {
+    dirtyRef.current.add(activeId)
     setNotes((ns) => ns.map((n) => (n.id === activeId ? { ...n, lines: fn(n.lines), meta: 'just now' } : n)))
+  }
 
   const activate = (i, caret) => {
     caretRef.current = caret
@@ -138,21 +145,27 @@ export default function Notes() {
     setLineIdx(null)
   }
 
-  const newNote = () => {
-    const id = Math.max(0, ...notes.map((n) => n.id)) + 1
-    setNotes((ns) => [{ id, meta: 'just now', lines: ['# untitled', ''] }, ...ns])
-    setActiveId(id)
-    activate(1, 0)
+  const newNote = async () => {
+    try {
+      const n = await createNote('# untitled\n')
+      setNotes((ns) => [fromApi(n), ...ns])
+      setActiveId(n.id)
+      activate(1, 0)
+    } catch {
+      setLinkDown(true)
+    }
   }
 
   const deleteNote = (e, id) => {
     e.stopPropagation()
+    dirtyRef.current.delete(id)
     const rest = notes.filter((n) => n.id !== id)
     setNotes(rest)
     if (id === activeId) {
       setActiveId(rest.length ? rest[0].id : null)
       setLineIdx(null)
     }
+    deleteNoteApi(id).catch(() => setLinkDown(true))
   }
 
   return (
@@ -162,6 +175,7 @@ export default function Notes() {
         <span>
           markdown <b>live render</b>
         </span>
+        {linkDown && <span className="tag warn">link offline</span>}
       </PageHead>
 
       <div className="notes-layout">
