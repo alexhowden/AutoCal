@@ -23,6 +23,8 @@ export const catStyle = {
   SOCIAL: 'tag',
   IMPORTANT: 'tag warn',
   TASK: 'tag',
+  SKIP: 'tag',
+  OTHER: 'tag',
 }
 
 export const activityLog = [

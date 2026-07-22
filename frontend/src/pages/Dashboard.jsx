@@ -1,16 +1,63 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { NodePanel, WirePanel, RingGauge, SegBar, PageHead, Corners, HButton } from '../components/ui.jsx'
 import AgendaEdit from '../components/AgendaEdit.jsx'
-import { agenda, untimedTasks, nowMark, catStyle, TODAY } from '../mock.js'
+import { catStyle } from '../mock.js'
+import {
+  getEvents,
+  patchEvent,
+  deleteEvent,
+  getTasks,
+  createTask,
+  patchTask,
+  deleteTask,
+  moveTask,
+} from '../api.js'
+import { toItem, toPatch, toTask, toTaskPatch, localDate, hm } from '../gcal.js'
+
+const NEW_TASK_ID = '__new__'
 
 export default function Dashboard() {
-  const [items, setItems] = useState(agenda)
-  const [tasks, setTasks] = useState(untimedTasks)
+  const [items, setItems] = useState([])
+  const [linkDown, setLinkDown] = useState(false)
+  const [syncedAt, setSyncedAt] = useState(null)
+  const [tasks, setTasks] = useState([])
   const [editing, setEditing] = useState(null)
   const [taskEdit, setTaskEdit] = useState(null)
   const [dragIdx, setDragIdx] = useState(null)
   const [overIdx, setOverIdx] = useState(null)
   const [armed, setArmed] = useState(null)
+
+  const today = localDate(new Date())
+
+  const refreshTasks = async () => {
+    try {
+      setTasks((await getTasks()).map(toTask))
+    } catch {
+      setLinkDown(true)
+    }
+  }
+
+  const refresh = async () => {
+    const start = new Date()
+    start.setHours(0, 0, 0, 0)
+    const end = new Date(start)
+    end.setDate(end.getDate() + 1)
+    try {
+      const [evs] = await Promise.all([
+        getEvents(start.toISOString(), end.toISOString()),
+        refreshTasks(),
+      ])
+      setItems(evs.map(toItem))
+      setSyncedAt(hm(new Date()))
+      setLinkDown(false)
+    } catch {
+      setLinkDown(true)
+    }
+  }
+
+  useEffect(() => {
+    refresh()
+  }, [])
 
   const events = items.filter((a) => a.type === 'event')
   const timedTasks = items.filter((a) => a.type === 'task')
@@ -18,57 +65,107 @@ export default function Dashboard() {
   const tasksDone = allTasks.filter((t) => t.done).length
   const untimedDone = tasks.filter((t) => t.done).length
 
-  const saveItem = (updated) => {
-    setItems((ls) => ls.map((it) => (it.id === updated.id ? updated : it)))
+  // agenda index the NOW line sits before
+  const now = new Date()
+  const nowPos = items.filter((it) => !it.allDay && it.time && it.time <= hm(now)).length
+
+  // schedule load: booked hours across timed events
+  const bookedMs = items
+    .filter((it) => !it.allDay)
+    .reduce((sum, it) => sum + (new Date(it.endISO) - new Date(it.startISO)), 0)
+  const bookedH = bookedMs / 3600000
+  const loadFrac = Math.min(1, bookedH / 14)
+  const lastEnd = items.filter((it) => !it.allDay).map((it) => it.end).sort().at(-1)
+
+  const saveItem = async (updated) => {
     setEditing(null)
+    try {
+      if (updated.type === 'task') await patchTask(updated.id, toTaskPatch(updated))
+      else await patchEvent(updated.id, toPatch(updated))
+    } catch {
+      setLinkDown(true)
+    }
+    refresh()
   }
 
-  const deleteItem = (id) => {
-    setItems((ls) => ls.filter((it) => it.id !== id))
+  const deleteItem = async (id) => {
+    const wasTask = editing?.type === 'task'
     setEditing(null)
+    try {
+      if (wasTask) await deleteTask(id)
+      else await deleteEvent(id)
+    } catch {
+      setLinkDown(true)
+    }
+    refresh()
+  }
+
+  const toggleTask = async (t) => {
+    const done = !t.done
+    setTasks((ts) => ts.map((x) => (x.id === t.id ? { ...x, done } : x)))
+    try {
+      await patchTask(t.id, done ? { status: 'completed' } : { status: 'needsAction', completed: null })
+    } catch {
+      setLinkDown(true)
+      refreshTasks()
+    }
   }
 
   const addTask = () => {
-    const id = Math.max(0, ...items.map((i) => i.id), ...tasks.map((t) => t.id)) + 1
-    setTasks((ts) => [...ts, { id, name: '', done: false }])
-    setTaskEdit({ id, value: '' })
+    setTasks((ts) => [{ id: NEW_TASK_ID, name: '', done: false }, ...ts])
+    setTaskEdit({ id: NEW_TASK_ID, value: '' })
   }
 
-  const commitTask = () => {
+  const commitTask = async () => {
     if (!taskEdit) return
     const name = taskEdit.value.trim()
-    setTasks((ts) => (name ? ts.map((t) => (t.id === taskEdit.id ? { ...t, name } : t)) : ts.filter((t) => t.id !== taskEdit.id)))
     setTaskEdit(null)
+    setTasks((ts) => ts.filter((t) => t.id !== NEW_TASK_ID))
+    if (!name) return
+    try {
+      await createTask(name)
+    } catch {
+      setLinkDown(true)
+    }
+    refreshTasks()
   }
 
   const cancelTask = () => {
     if (!taskEdit) return
-    setTasks((ts) => ts.filter((t) => t.id !== taskEdit.id || t.name))
+    setTasks((ts) => ts.filter((t) => t.id !== NEW_TASK_ID))
     setTaskEdit(null)
   }
 
-  const dropTask = (i) => {
-    if (dragIdx !== null && dragIdx !== i) {
-      setTasks((ts) => {
-        const next = [...ts]
-        const [moved] = next.splice(dragIdx, 1)
-        next.splice(i, 0, moved)
-        return next
-      })
-    }
+  const dropTask = async (i) => {
+    const from = dragIdx
     setDragIdx(null)
     setOverIdx(null)
     setArmed(null)
+    if (from === null || from === i) return
+    const next = [...tasks]
+    const [moved] = next.splice(from, 1)
+    next.splice(i, 0, moved)
+    setTasks(next)
+    try {
+      await moveTask(moved.id, next[i - 1]?.id)
+    } catch {
+      setLinkDown(true)
+      refreshTasks()
+    }
   }
 
   return (
     <>
       <PageHead title="Dashboard">
-        <b>{TODAY}</b>
-        <span>
-          sync <span className="c">18:42:07</span>
-        </span>
-        <span>link 127.0.0.1:8000</span>
+        <b>{today}</b>
+        {linkDown ? (
+          <span className="tag warn">link offline</span>
+        ) : (
+          <span>
+            sync <span className="c">{syncedAt || '...'}</span>
+          </span>
+        )}
+        <span>link 127.0.0.1:8787</span>
       </PageHead>
 
       <div className="stat-row">
@@ -78,15 +175,15 @@ export default function Dashboard() {
         <WirePanel title="Tasks" center>
           <RingGauge value={tasksDone} max={allTasks.length} cyan />
         </WirePanel>
-        <WirePanel title="Schedule load" right={<b className="load-pct">62%</b>}>
+        <WirePanel title="Schedule load" right={<b className="load-pct">{Math.round(loadFrac * 100)}%</b>}>
           <div className="load-panel">
-            <SegBar frac={0.62} hot={2} />
+            <SegBar frac={loadFrac} hot={2} />
             <span className="micro">
               <span>
-                peak window <b>14:00 - 16:00</b>
+                booked <b>{bookedH.toFixed(1)}h</b>
               </span>
               <span>
-                free after <b>20:00</b>
+                free after <b>{lastEnd || '--:--'}</b>
               </span>
             </span>
           </div>
@@ -94,7 +191,7 @@ export default function Dashboard() {
       </div>
 
       <NodePanel
-        title={`Agenda // ${TODAY}`}
+        title={`Agenda // ${today}`}
         right={
           <>
             <span>{events.length} events</span>
@@ -103,6 +200,11 @@ export default function Dashboard() {
         }
       >
         <div className="agenda-list">
+          {items.length === 0 && (
+            <div className="agenda-empty">
+              {linkDown ? '// link offline - start the backend to sync' : '// nothing scheduled today'}
+            </div>
+          )}
           {items.map((item, i) => (
             <div key={item.id}>
               <div
@@ -111,7 +213,7 @@ export default function Dashboard() {
               >
                 <Corners />
                 <span className="agenda-time">
-                  {item.time}
+                  {item.allDay ? 'ALL DAY' : item.time}
                   {item.end ? `-${item.end}` : ''}
                 </span>
                 <span className="agenda-name">
@@ -123,10 +225,10 @@ export default function Dashboard() {
                 </span>
                 <span className={catStyle[item.cat]}>{item.cat}</span>
               </div>
-              {i === nowMark.after && (
+              {i === nowPos - 1 && (
                 <div className="now-line">
                   <span className="line" />
-                  <span className="tag cyan">{nowMark.label}</span>
+                  <span className="tag cyan">NOW // {hm(now)}</span>
                   <span className="line" />
                 </div>
               )}
@@ -173,7 +275,12 @@ export default function Dashboard() {
               dropTask(i)
             }}
           >
-            <span className={`checkbox ${t.done ? 'checked' : ''}`}>{t.done ? '✕' : ''}</span>
+            <span
+              className={`checkbox ${t.done ? 'checked' : ''}`}
+              onClick={() => t.id !== NEW_TASK_ID && toggleTask(t)}
+            >
+              {t.done ? '✕' : ''}
+            </span>
             {taskEdit && taskEdit.id === t.id ? (
               <input
                 className="finput tinput"
@@ -189,14 +296,18 @@ export default function Dashboard() {
                 }}
               />
             ) : (
-              <span>{t.name}</span>
+              <span className="task-name" onClick={() => setEditing(t)}>
+                {t.name}
+              </span>
             )}
-            <span
-              className="grip"
-              title="drag to reorder"
-              onMouseDown={() => setArmed(t.id)}
-              onMouseUp={() => setArmed(null)}
-            />
+            {!t.done && (
+              <span
+                className="grip"
+                title="drag to reorder"
+                onMouseDown={() => setArmed(t.id)}
+                onMouseUp={() => setArmed(null)}
+              />
+            )}
           </div>
         ))}
       </NodePanel>

@@ -903,7 +903,15 @@ body::after {
 
 .agenda-item.done .agenda-name span { text-decoration: line-through; color: var(--text-low); }
 
-.agenda-loc { font-size: 12px; color: var(--text-low); letter-spacing: 0.5px; }
+.agenda-loc {
+  font-size: 12px;
+  color: var(--text-low);
+  letter-spacing: 0.5px;
+  max-width: 340px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
 .checkbox {
   width: 13px; height: 13px;
@@ -1109,6 +1117,19 @@ textarea.finput { resize: vertical; min-height: 58px; line-height: 1.5; font-fam
   color: var(--cyan);
   border: 1px solid var(--cyan-dim);
   background: var(--cyan-ghost);
+}
+
+.task-row .checkbox { cursor: pointer; }
+
+.task-name { cursor: pointer; }
+
+.task-name:hover { color: var(--cyan); }
+
+.agenda-empty {
+  padding: 18px 4px;
+  font-size: 12px;
+  letter-spacing: 0.5px;
+  color: var(--text-low);
 }
 
 .chat-empty {
@@ -1376,6 +1397,13 @@ textarea.finput { resize: vertical; min-height: 58px; line-height: 1.5; font-fam
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* events under ~45min: one tight line, no time */
+.cal-event.short { padding: 1px 6px; justify-content: center; }
+
+.cal-event.short .cal-ev-name { font-size: 11px; }
+
+.cal-event.short .cal-ev-time { display: none; }
 
 .cal-now {
   position: absolute;

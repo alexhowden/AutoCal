@@ -1,28 +1,48 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { VentPanel, NodePanel, PageHead, HButton } from '../components/ui.jsx'
-import { weekDays, weekEvents, calTasks, todayIndex, nowHour, catStyle } from '../mock.js'
+import AgendaEdit from '../components/AgendaEdit.jsx'
+import { catStyle } from '../mock.js'
+import { getEvents, patchEvent, deleteEvent } from '../api.js'
+import { toItem, toPatch, hm, TZ } from '../gcal.js'
 
 const DAY_START = 8
 const DAY_END = 22
 const HOUR_PX = 44
 
 const hours = Array.from({ length: DAY_END - DAY_START }, (_, i) => DAY_START + i)
+const DAY_NAMES = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN']
+const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec']
 
 const fmt = (h) => `${String(Math.floor(h)).padStart(2, '0')}:${h % 1 ? '30' : '00'}`
 
-function DayColumn({ dayIndex, label, detailed, onSelect }) {
-  const events = weekEvents.filter((e) => e.day === dayIndex)
-  const tasks = calTasks.filter((t) => t.day === dayIndex)
-  const isToday = dayIndex === todayIndex
+function weekStart() {
+  const d = new Date()
+  d.setHours(0, 0, 0, 0)
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7))
+  return d
+}
 
+function isoWeekNum(date) {
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()))
+  const dayNum = d.getUTCDay() || 7
+  d.setUTCDate(d.getUTCDate() + 4 - dayNum)
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1))
+  return Math.ceil(((d - yearStart) / 86400000 + 1) / 7)
+}
+
+const hourOf = (iso) => {
+  const d = new Date(iso)
+  return d.getHours() + d.getMinutes() / 60
+}
+
+function DayColumn({ label, events, allDayItems, isToday, nowHour, detailed, onSelect }) {
   return (
     <div className={`cal-day ${isToday ? 'today' : ''}`}>
       <div className="cal-daylabel">{label}</div>
       <div className="cal-lane">
-        {tasks.map((t) => (
-          <span key={t.id} className="cal-task">
-            <span className={`checkbox ${t.done ? 'checked' : ''}`} />
-            {t.name}
+        {allDayItems.map((it) => (
+          <span key={it.id} className="cal-task" onClick={() => onSelect({ ...it, dayLabel: label })}>
+            {it.name}
           </span>
         ))}
       </div>
@@ -33,23 +53,21 @@ function DayColumn({ dayIndex, label, detailed, onSelect }) {
         {events.map((e) => (
           <div
             key={e.id}
-            className={`cal-event ${e.cat === 'IMPORTANT' ? 'important' : ''}`}
+            className={`cal-event ${e.cat === 'IMPORTANT' ? 'important' : ''} ${e.endH - e.startH <= 0.8 ? 'short' : ''}`}
             style={{
-              top: (e.start - DAY_START) * HOUR_PX + 1,
-              height: (e.end - e.start) * HOUR_PX - 4,
+              top: (e.startH - DAY_START) * HOUR_PX + 1,
+              height: (e.endH - e.startH) * HOUR_PX - 4,
             }}
             onClick={() => onSelect({ ...e, dayLabel: label })}
           >
             <span className="cal-ev-name">{e.name}</span>
             <span className="cal-ev-time">
-              {fmt(e.start)} - {fmt(e.end)}
+              {e.time} - {e.end}
               {detailed && e.loc ? ` @ ${e.loc}` : ''}
             </span>
           </div>
         ))}
-        {isToday && (
-          <div className="cal-now" style={{ top: (nowHour - DAY_START) * HOUR_PX }} />
-        )}
+        {isToday && <div className="cal-now" style={{ top: (nowHour - DAY_START) * HOUR_PX }} />}
       </div>
     </div>
   )
@@ -57,14 +75,85 @@ function DayColumn({ dayIndex, label, detailed, onSelect }) {
 
 export default function Calendar() {
   const [view, setView] = useState('week')
+  const [items, setItems] = useState([])
+  const [linkDown, setLinkDown] = useState(false)
   const [selected, setSelected] = useState(null)
-  const days = view === 'week' ? weekDays.map((d, i) => i) : [todayIndex]
+  const [editing, setEditing] = useState(null)
+
+  const start = weekStart()
+  const todayMid = new Date()
+  todayMid.setHours(0, 0, 0, 0)
+  const todayIndex = Math.round((todayMid - start) / 86400000)
+  const nowHour = new Date().getHours() + new Date().getMinutes() / 60
+
+  const dayDates = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(start)
+    d.setDate(d.getDate() + i)
+    return d
+  })
+  const weekDays = dayDates.map((d, i) => `${DAY_NAMES[i]} ${d.getDate()}`)
+  const last = dayDates[6]
+  const range = `${MONTHS[start.getMonth()]} ${start.getDate()} - ${
+    start.getMonth() === last.getMonth() ? '' : `${MONTHS[last.getMonth()]} `
+  }${last.getDate()}`
+
+  const refresh = async () => {
+    const end = new Date(start)
+    end.setDate(end.getDate() + 7)
+    try {
+      const evs = await getEvents(start.toISOString(), end.toISOString())
+      setItems(evs.map(toItem))
+      setLinkDown(false)
+    } catch {
+      setLinkDown(true)
+    }
+  }
+
+  useEffect(() => {
+    refresh()
+  }, [])
+
+  // position timed events on the grid, clamped to visible hours
+  const dayIndexOf = (it) => Math.round((new Date(it.startISO).setHours(0, 0, 0, 0) - start) / 86400000)
+  const timed = items
+    .filter((it) => !it.allDay)
+    .map((it) => ({
+      ...it,
+      day: dayIndexOf(it),
+      startH: Math.max(DAY_START, Math.min(DAY_END - 0.5, hourOf(it.startISO))),
+      endH: Math.max(DAY_START + 0.5, Math.min(DAY_END, hourOf(it.endISO))),
+    }))
+  const allDay = items.filter((it) => it.allDay)
+
+  const days = view === 'week' ? weekDays.map((_, i) => i) : [todayIndex]
+
+  const saveItem = async (updated) => {
+    setEditing(null)
+    try {
+      await patchEvent(updated.id, toPatch(updated))
+    } catch {
+      setLinkDown(true)
+    }
+    refresh()
+  }
+
+  const deleteItem = async (id) => {
+    setEditing(null)
+    setSelected(null)
+    try {
+      await deleteEvent(id)
+    } catch {
+      setLinkDown(true)
+    }
+    refresh()
+  }
 
   return (
     <>
-      <PageHead title="Calendar // week 30">
-        <span>jul 20 - 26</span>
-        <span>tz america/new_york</span>
+      <PageHead title={`Calendar // week ${isoWeekNum(new Date())}`}>
+        <span>{range}</span>
+        <span>tz {TZ.toLowerCase()}</span>
+        {linkDown && <span className="tag warn">link offline</span>}
       </PageHead>
 
       <div className="filter-row">
@@ -80,13 +169,13 @@ export default function Calendar() {
       </div>
 
       <VentPanel
-        title={view === 'week' ? 'Grid // 7 day' : `Grid // ${weekDays[todayIndex]}`}
+        title={view === 'week' ? 'Grid // 7 day' : `Grid // ${weekDays[todayIndex] || 'today'}`}
         right={
           <>
-            <span>{weekEvents.length} events</span>
-            <span>{calTasks.length} tasks</span>
+            <span>{timed.length} events</span>
+            <span>{allDay.length} all-day</span>
             <span>
-              now <span className="c">18:47</span>
+              now <span className="c">{hm(new Date())}</span>
             </span>
           </>
         }
@@ -105,8 +194,11 @@ export default function Calendar() {
             {days.map((di) => (
               <DayColumn
                 key={di}
-                dayIndex={di}
                 label={weekDays[di]}
+                events={timed.filter((e) => e.day === di)}
+                allDayItems={allDay.filter((it) => dayIndexOf(it) === di)}
+                isToday={di === todayIndex}
+                nowHour={nowHour}
                 detailed={view === 'day'}
                 onSelect={setSelected}
               />
@@ -115,7 +207,7 @@ export default function Calendar() {
         </div>
       </VentPanel>
 
-      {selected && (
+      {selected && !editing && (
         <div className="cal-detail-backdrop" onClick={() => setSelected(null)}>
           <div className="cal-detail" onClick={(e) => e.stopPropagation()}>
             <NodePanel
@@ -128,7 +220,8 @@ export default function Calendar() {
             >
               <div className="cal-drow">
                 <span className="k">When</span>
-                {selected.dayLabel} // {fmt(selected.start)} - {fmt(selected.end)}
+                {selected.dayLabel} //{' '}
+                {selected.allDay ? 'all day' : `${selected.time} - ${selected.end}`}
               </div>
               {selected.loc && (
                 <div className="cal-drow">
@@ -141,13 +234,31 @@ export default function Calendar() {
                 <span className={catStyle[selected.cat]}>{selected.cat}</span>
               </div>
               <div className="cal-dbtns">
-                <HButton small>Edit</HButton>
-                <HButton small>Delete</HButton>
-                <HButton small>Open in GCal</HButton>
+                <HButton small onClick={() => setEditing(selected)}>
+                  Edit
+                </HButton>
+                <HButton small onClick={() => deleteItem(selected.id)}>
+                  Delete
+                </HButton>
+                <HButton small onClick={() => selected.link && window.open(selected.link, '_blank')}>
+                  Open in GCal
+                </HButton>
               </div>
             </NodePanel>
           </div>
         </div>
+      )}
+
+      {editing && (
+        <AgendaEdit
+          item={editing}
+          onSave={saveItem}
+          onDelete={deleteItem}
+          onClose={() => {
+            setEditing(null)
+            setSelected(null)
+          }}
+        />
       )}
     </>
   )

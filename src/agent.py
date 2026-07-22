@@ -25,18 +25,26 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
 load_dotenv()
-SCOPES = ['https://www.googleapis.com/auth/calendar']
+SCOPES = [
+	'https://www.googleapis.com/auth/calendar',
+	'https://www.googleapis.com/auth/tasks',
+]
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-_service = None
+_services: dict[str, object] = {}
 _service_lock = threading.Lock()
+API_VERSIONS = {'calendar': 'v3', 'tasks': 'v1'}
 
 def cal_auth():
 	creds = None
 	token_path = os.path.join(BASE_DIR, 'token.json')
 
 	if os.path.exists(token_path):
-		creds = Credentials.from_authorized_user_file(token_path, SCOPES)
+		# no scopes arg: creds.scopes must reflect what the token was GRANTED,
+		# not what we are requesting, or the stale-scope check below always passes
+		creds = Credentials.from_authorized_user_file(token_path)
+		if not creds.scopes or not set(SCOPES).issubset(set(creds.scopes)):
+			creds = None
 
 	if not creds or not creds.valid:
 		if creds and creds.expired and creds.refresh_token:
@@ -57,12 +65,11 @@ def cal_auth():
 
 	return creds
 
-def get_service():
-	global _service
+def get_service(api='calendar'):
 	with _service_lock:
-		if _service is None:
-			_service = build('calendar', 'v3', credentials=cal_auth())
-		return _service
+		if api not in _services:
+			_services[api] = build(api, API_VERSIONS[api], credentials=cal_auth())
+		return _services[api]
 
 async def gcal(op):
 	'''Runs blocking Google API work off the event loop so a slow call

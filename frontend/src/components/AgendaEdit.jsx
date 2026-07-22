@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { NodePanel, HButton, CyberSelect, Toggle } from './ui.jsx'
-import { TODAY } from '../mock.js'
+import { localDate } from '../gcal.js'
 
 const cats = ['CLASS', 'ACADEMIC', 'SOCIAL', 'IMPORTANT']
 
@@ -11,7 +11,7 @@ export default function AgendaEdit({ item, onSave, onDelete, onClose }) {
   const isTask = item.type === 'task'
   const [form, setForm] = useState({
     name: item.name,
-    date: item.date || TODAY,
+    date: item.date || (item.type === 'task' ? '' : localDate(new Date())),
     time: item.time || '',
     end: item.end || '',
     loc: item.loc || '',
@@ -44,13 +44,21 @@ export default function AgendaEdit({ item, onSave, onDelete, onClose }) {
 
             <div className="erow">
               <label className="efield">
-                <span className="k">date</span>
-                <input className="finput" value={form.date} onChange={setV('date')} spellCheck={false} />
+                <span className="k">{isTask ? 'due' : 'date'}</span>
+                <input
+                  className="finput"
+                  value={form.date}
+                  onChange={setV('date')}
+                  placeholder={isTask ? 'no due date' : ''}
+                  spellCheck={false}
+                />
               </label>
-              <label className="efield">
-                <span className="k">{isTask ? 'due' : 'start'}</span>
-                <input className="finput" value={form.time} onChange={setV('time')} spellCheck={false} />
-              </label>
+              {!isTask && (
+                <label className="efield">
+                  <span className="k">start</span>
+                  <input className="finput" value={form.time} onChange={setV('time')} spellCheck={false} />
+                </label>
+              )}
               {!isTask && (
                 <label className="efield">
                   <span className="k">end</span>
@@ -104,7 +112,11 @@ export default function AgendaEdit({ item, onSave, onDelete, onClose }) {
               <HButton small onClick={() => onDelete(item.id)}>
                 Delete
               </HButton>
-              {!isTask && <HButton small>Open in GCal</HButton>}
+              {!isTask && (
+                <HButton small onClick={() => item.link && window.open(item.link, '_blank')}>
+                  Open in GCal
+                </HButton>
+              )}
               <HButton small primary onClick={() => onSave({ ...item, ...form })}>
                 Save
               </HButton>
