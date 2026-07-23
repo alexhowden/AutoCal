@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { NodePanel, WirePanel, PageHead, Corners, HButton } from '../components/ui.jsx'
+import { NodePanel, WirePanel, PageHead, Corners, HButton, JoinChip } from '../components/ui.jsx'
 import AgendaEdit from '../components/AgendaEdit.jsx'
 import {
   getEvents,
@@ -308,6 +308,13 @@ export default function Dashboard() {
     refresh()
   }, [])
 
+  // at login the app spawns the backend itself - keep retrying while it boots
+  useEffect(() => {
+    if (!linkDown) return
+    const t = setInterval(refresh, 2500)
+    return () => clearInterval(t)
+  }, [linkDown])
+
   const events = items.filter((a) => a.type === 'event')
   const timedTasks = items.filter((a) => a.type === 'task')
 
@@ -527,7 +534,11 @@ export default function Dashboard() {
                     <span className={`checkbox ${item.done ? 'checked' : ''}`}>{item.done ? '✕' : ''}</span>
                   )}
                   <span>{item.name}</span>
-                  {item.loc && <span className="agenda-loc">@ {item.loc}</span>}
+                  {/* a location that's just a url reads as noise - the chip replaces it */}
+                  {item.loc && !/^https?:\/\//.test(item.loc) && (
+                    <span className="agenda-loc">@ {item.loc}</span>
+                  )}
+                  <JoinChip url={item.meet} />
                 </span>
                 <span className={tagClass(item.cat)}>{item.cat}</span>
               </div>

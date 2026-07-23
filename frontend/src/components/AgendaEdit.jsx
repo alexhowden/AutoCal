@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { NodePanel, HButton, CyberSelect, Toggle } from './ui.jsx'
+import { NodePanel, HButton, CyberSelect, Toggle, JoinChip } from './ui.jsx'
 import { localDate, getCats } from '../gcal.js'
 
 // field set mirrors what the agent can patch through the APIs:
@@ -108,6 +108,7 @@ export default function AgendaEdit({ item, onSave, onDelete, onClose }) {
             </label>
 
             <div className="ebtns">
+              {!isTask && <JoinChip url={item.meet} />}
               {!item.isNew && (
                 <HButton small onClick={() => onDelete(item.id)}>
                   Delete

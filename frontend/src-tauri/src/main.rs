@@ -1,12 +1,48 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+use std::{
+    fs,
+    net::TcpStream,
+    path::Path,
+    process::{Child, Command, Stdio},
+    sync::Mutex,
+};
 use tauri::{
     menu::{Menu, MenuItem, PredefinedMenuItem},
     tray::TrayIconBuilder,
     Emitter, Manager,
 };
 use tauri_plugin_autostart::MacosLauncher;
+#[cfg(not(debug_assertions))]
+use tauri_plugin_autostart::ManagerExt;
 use tauri_plugin_opener::OpenerExt;
+
+// the repo this app was compiled from - the python backend runs out of it.
+// if the repo ever moves, rebuilding the app re-points this
+const REPO: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
+
+struct Backend(Mutex<Option<Child>>);
+
+fn spawn_backend() -> Option<Child> {
+    // something is already serving (dev stack or an earlier instance) - use it
+    if TcpStream::connect(("127.0.0.1", 8787)).is_ok() {
+        return None;
+    }
+    let repo = Path::new(REPO);
+    let log = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(repo.join("data").join("backend.log"))
+        .ok()?;
+    let err = log.try_clone().ok()?;
+    Command::new(repo.join("venv/bin/python"))
+        .args(["-m", "uvicorn", "src.server:app", "--host", "127.0.0.1", "--port", "8787"])
+        .current_dir(repo)
+        .stdout(Stdio::from(log))
+        .stderr(Stdio::from(err))
+        .spawn()
+        .ok()
+}
 
 fn open_tab(app: &tauri::AppHandle, tab: &str) {
     if let Some(win) = app.get_webview_window("main") {
@@ -25,6 +61,19 @@ fn main() {
             None,
         ))
         .setup(|app| {
+            app.manage(Backend(Mutex::new(spawn_backend())));
+
+            // a launch-at-login entry registered by an older binary points at a
+            // stale path - re-registering from the running app heals it. dev
+            // builds skip this so they never hijack the entry
+            #[cfg(not(debug_assertions))]
+            {
+                let auto = app.autolaunch();
+                if auto.is_enabled().unwrap_or(false) {
+                    let _ = auto.enable();
+                }
+            }
+
             let dashboard = MenuItem::with_id(app, "dashboard", "Dashboard", true, None::<&str>)?;
             let gcal = MenuItem::with_id(app, "gcal", "Open Google Calendar", true, None::<&str>)?;
             let quick_add = MenuItem::with_id(app, "quick_add", "Quick Add…", true, None::<&str>)?;
@@ -74,6 +123,17 @@ fn main() {
                 api.prevent_close();
             }
         })
-        .run(tauri::generate_context!())
-        .expect("error while running AutoCal");
+        .build(tauri::generate_context!())
+        .expect("error while building AutoCal")
+        .run(|app, event| {
+            if let tauri::RunEvent::Exit = event {
+                // only reaps a backend this instance spawned - a shared dev
+                // backend (port already bound at startup) is left alone
+                if let Some(backend) = app.try_state::<Backend>() {
+                    if let Some(child) = backend.0.lock().unwrap().as_mut() {
+                        let _ = child.kill();
+                    }
+                }
+            }
+        });
 }

@@ -109,6 +109,44 @@ export function VentPanel({ title, right, className = '', bodyClass = '', childr
   )
 }
 
+// meeting-link chip (zoom / teams / meet) - opens in the system browser.
+// cyan family = clickable, so every theme styles it for free
+export function JoinChip({ url, mini = false }) {
+  if (!url) return null
+  const label = url.includes('zoom.us')
+    ? 'zoom'
+    : url.includes('meet.google')
+      ? 'meet'
+      : url.includes('teams.')
+        ? 'teams'
+        : 'join'
+  const open = async (e) => {
+    e.stopPropagation()
+    if ('__TAURI_INTERNALS__' in window) {
+      try {
+        const { openUrl } = await import('@tauri-apps/plugin-opener')
+        await openUrl(url)
+        return
+      } catch {
+        // plugin unavailable (old build) - fall through to window.open
+      }
+    }
+    window.open(url, '_blank', 'noopener')
+  }
+  if (mini) {
+    return (
+      <button className="join-mini" title={`join ${label} // ${url}`} onClick={open}>
+        ▶
+      </button>
+    )
+  }
+  return (
+    <button className="tag cyan join-chip" title={url} onClick={open}>
+      ▶ {label}
+    </button>
+  )
+}
+
 export function HButton({ children, small = false, primary = false, disabled = false, onClick }) {
   return (
     <button

@@ -64,6 +64,22 @@ export const hm = (d) => `${pad(d.getHours())}:${pad(d.getMinutes())}`
 
 export const localDate = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 
+// meeting-link extraction: dedicated conference fields first, then url
+// patterns in location and description (zoom / teams / google meet)
+const MEET_RE = /https:\/\/(?:[\w-]+\.)*(?:zoom\.us|teams\.microsoft\.com|teams\.live\.com|meet\.google\.com)\/[^\s"'<>]+/i
+
+export function meetLink(ev) {
+  if (ev.hangoutLink) return ev.hangoutLink
+  const ep = ev.conferenceData?.entryPoints?.find((e) => e.entryPointType === 'video')
+  if (ep?.uri) return ep.uri
+  for (const text of [ev.location, ev.description]) {
+    const m = text?.match(MEET_RE)
+    // descriptions are html - unescape &amp; and drop trailing punctuation
+    if (m) return m[0].replace(/&amp;/g, '&').replace(/[).,;]+$/, '')
+  }
+  return ''
+}
+
 // google event resource -> flat item the pages and edit modal work with
 export function toItem(ev) {
   const allDay = !ev.start?.dateTime
@@ -83,6 +99,7 @@ export function toItem(ev) {
     startISO: ev.start?.dateTime || ev.start?.date,
     endISO: ev.end?.dateTime || ev.end?.date,
     link: ev.htmlLink,
+    meet: meetLink(ev),
     account: ev.account || '',
   }
 }

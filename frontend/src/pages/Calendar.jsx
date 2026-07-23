@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { VentPanel, NodePanel, PageHead, HButton } from '../components/ui.jsx'
+import { VentPanel, NodePanel, PageHead, HButton, JoinChip } from '../components/ui.jsx'
 import AgendaEdit from '../components/AgendaEdit.jsx'
 import { getEvents, patchEvent, deleteEvent } from '../api.js'
 import { toItem, toPatch, hm, TZ, tagClass, isAccent, loadProtocol } from '../gcal.js'
@@ -91,6 +91,7 @@ function DayColumn({ label, events, allDayItems, isToday, nowHour, detailed, onS
           >
             <span className="cal-ev-name">{e.name}</span>
             <span className="cal-ev-time">
+              {e.meet && <JoinChip mini url={e.meet} />}
               {e.time} - {e.end}
               {detailed && e.loc ? ` @ ${e.loc}` : ''}
             </span>
@@ -297,6 +298,12 @@ export default function Calendar() {
                 <div className="cal-drow">
                   <span className="k">Where</span>
                   {selected.loc}
+                </div>
+              )}
+              {selected.meet && (
+                <div className="cal-drow">
+                  <span className="k">Join</span>
+                  <JoinChip url={selected.meet} />
                 </div>
               )}
               <div className="cal-drow">
