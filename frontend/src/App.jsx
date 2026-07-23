@@ -24,12 +24,25 @@ function AppInner() {
   const [tab, setTab] = useState(initialTab)
   const { fx } = useFx()
 
+  // hidden windows always pause; unfocused ones pause only when the
+  // "background motion" setting is off. ?perf keeps everything running.
   useEffect(() => {
-    const onVis = () => document.body.classList.toggle('fx-paused', document.hidden)
-    document.addEventListener('visibilitychange', onVis)
-    onVis()
-    return () => document.removeEventListener('visibilitychange', onVis)
-  }, [])
+    if (new URLSearchParams(window.location.search).has('perf')) return
+    const update = () =>
+      document.body.classList.toggle(
+        'fx-paused',
+        document.hidden || (!fx.bgMotion && !document.hasFocus())
+      )
+    document.addEventListener('visibilitychange', update)
+    window.addEventListener('blur', update)
+    window.addEventListener('focus', update)
+    update()
+    return () => {
+      document.removeEventListener('visibilitychange', update)
+      window.removeEventListener('blur', update)
+      window.removeEventListener('focus', update)
+    }
+  }, [fx.bgMotion])
 
   useEffect(() => {
     if (!('__TAURI_INTERNALS__' in window)) return

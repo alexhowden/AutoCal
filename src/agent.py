@@ -24,7 +24,14 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
-from .store import get_settings, log_activity, list_accounts, save_accounts
+from .store import (
+	cache_remove_event,
+	cache_upsert_event,
+	get_settings,
+	log_activity,
+	list_accounts,
+	save_accounts,
+)
 
 load_dotenv()
 SCOPES = [
@@ -50,8 +57,9 @@ def _run_consent_flow():
 	flow = InstalledAppFlow.from_client_secrets_file(creds_path, SCOPES)
 	return flow.run_local_server(port=0, timeout_seconds=180)
 
-def account_creds(entry):
-	'''Valid credentials for one account; refreshes silently, re-consents interactively.'''
+def account_creds(entry, interactive=True):
+	'''Valid credentials for one account; refreshes silently, re-consents interactively.
+	interactive=False raises instead of opening a browser - background sync must never pop consent.'''
 	token_path = os.path.join(BASE_DIR, entry['token'])
 	creds = None
 
@@ -70,6 +78,8 @@ def account_creds(entry):
 				creds = None
 
 		if not creds or not creds.valid:
+			if not interactive:
+				raise RuntimeError(f"{entry.get('email') or 'account'} needs re-consent")
 			creds = _run_consent_flow()
 
 		with open(token_path, 'w') as token:
@@ -77,7 +87,7 @@ def account_creds(entry):
 
 	return creds
 
-def get_service(api='calendar', account=None):
+def get_service(api='calendar', account=None, interactive=True):
 	'''Service for one account (by email); defaults to the primary (first linked).'''
 	accounts = get_accounts()
 	if not accounts:
@@ -86,8 +96,15 @@ def get_service(api='calendar', account=None):
 	key = (entry['token'], api)
 	with _service_lock:
 		if key not in _services:
-			_services[key] = build(api, API_VERSIONS[api], credentials=account_creds(entry))
+			_services[key] = build(api, API_VERSIONS[api], credentials=account_creds(entry, interactive))
 		return _services[key]
+
+def resolve_account(email=None):
+	'''The account a write lands on when none is specified: the primary.'''
+	if email:
+		return email
+	prim = primary_of(get_accounts())
+	return (prim or {}).get('email', '')
 
 def _email_for(creds):
 	cal = build('calendar', 'v3', credentials=creds).calendarList().get(calendarId='primary').execute()
@@ -185,16 +202,24 @@ def unlink_account(email):
 		_services.clear()
 	return True
 
-async def gcal(op, log=None):
+async def gcal(op, log=None, cache=None):
 	'''Runs blocking Google API work off the event loop so a slow call
 	(or a pending OAuth consent) never freezes the server.
-	log: optional result -> (kind, text) for the activity feed, on success only.'''
+	log: optional result -> (kind, text) for the activity feed, on success only.
+	cache: optional result -> None that patches the local mirror after a write.'''
 	try:
 		result = await asyncio.to_thread(op)
 		if log:
 			try:
 				kind, text = log(result)
 				log_activity(kind, text, 'agent')
+			except Exception:
+				pass
+		if cache:
+			try:
+				cache(result)
+				from . import sync  # lazy: sync imports this module
+				sync.schedule_refresh()
 			except Exception:
 				pass
 		return tool_result(result)
@@ -247,6 +272,15 @@ async def cal_view_events(args):
 			'colorId': ev.get('colorId'),
 			'account': email,
 		}
+
+	if args.get('timeMax'):
+		from . import sync  # lazy: sync imports this module
+		cached = sync.cached_events(args['timeMin'], args['timeMax'])
+		if cached is not None:
+			cap = args.get('maxResults', 25) * max(1, len(get_accounts()))
+			items = [slim(ev, ev.get('account', '')) for ev in cached[:cap]]
+			log_activity('SEARCH', f"scanned from {args['timeMin'][:16]} // {len(items)} results", 'agent')
+			return tool_result({'items': items})
 
 	def op():
 		kwargs = {
@@ -330,6 +364,7 @@ async def cal_add_event(args):
 	return await gcal(
 		lambda: get_service(account=args.get('account')).events().insert(calendarId='primary', body=body).execute(),
 		log=lambda r: ('CREATE', f"EVT {r.get('summary')} // {r['start'].get('dateTime', '')[:16]} // colorId {r.get('colorId', '-')}"),
+		cache=lambda r: cache_upsert_event({**r, 'account': resolve_account(args.get('account'))}),
 	)
 
 @tool(
@@ -393,6 +428,7 @@ async def cal_edit_event(args):
 	return await gcal(
 		lambda: get_service(account=args.get('account')).events().patch(calendarId='primary', eventId=args['eventId'], body=body).execute(),
 		log=lambda r: ('EDIT', f"EVT {r.get('summary')} updated"),
+		cache=lambda r: cache_upsert_event({**r, 'account': resolve_account(args.get('account'))}),
 	)
 
 @tool(
@@ -411,7 +447,11 @@ async def cal_delete_event(args):
 	def op():
 		get_service(account=args.get('account')).events().delete(calendarId='primary', eventId=args['eventId']).execute()
 		return 'Event successfully deleted.'
-	return await gcal(op, log=lambda r: ('DELETE', f"EVT {args['eventId']} removed"))
+	return await gcal(
+		op,
+		log=lambda r: ('DELETE', f"EVT {args['eventId']} removed"),
+		cache=lambda r: cache_remove_event(args['eventId']),
+	)
 
 calendar_server = create_sdk_mcp_server(
 	name='calendar',

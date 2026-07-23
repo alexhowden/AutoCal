@@ -37,43 +37,61 @@ function ReticleGauge({ value, max, label }) {
     return `M ${x0} ${y0} A ${r} ${r} 0 0 1 ${x1} ${y1}`
   }
   return (
-    <svg className="ret" viewBox="0 0 120 120" width="128" height="128" style={{ color: 'var(--red)' }}>
-      <circle className="ret-hair" cx="60" cy="60" r="54" />
-      {Array.from({ length: 60 }, (_, i) => {
-        const a = i * 6 - 90
-        const major = i % 5 === 0
-        const [x0, y0] = pt(a, 54)
-        const [x1, y1] = pt(a, major ? 50 : 52)
-        return <line key={i} className={`ret-tick ${major ? 'major' : ''}`} x1={x0} y1={y0} x2={x1} y2={y1} />
-      })}
-      {Array.from({ length: N }, (_, i) => (
-        <path
-          key={i}
-          className={`ret-seg ${i < lit ? 'lit' : ''}`}
-          d={seg(i, 42)}
-          style={{
-            transitionDelay: `${i * 25}ms`,
-            animationDelay: `calc(var(--pd, 0ms) + ${Math.round(i * (1200 / N))}ms)`,
-          }}
-        />
-      ))}
-      <circle className="ret-hair inner" cx="60" cy="60" r="33" />
-      <circle className="ret-core" cx="60" cy="60" r="27" style={{ opacity: 0.2 + shown * 0.8 }} />
-      <g className="ret-spin">
-        <path className="ret-accent" d="M 60 8 A 52 52 0 0 1 112 60" />
-      </g>
-      {[0, 90, 180, 270].map((a) => {
-        const [x, y] = pt(a, 54)
-        return <circle key={a} className="ret-node" cx={x} cy={y} r="2.2" />
-      })}
-      <text className="ret-val" x="60" y="58">
-        {value}
-        <tspan className="ret-max">/{max}</tspan>
-      </text>
-      <text className="ret-label" x="60" y="74">
-        {label}
-      </text>
-    </svg>
+    <div className="gauge-wrap" style={{ color: 'var(--red)' }}>
+      <svg className="ret" viewBox="0 0 120 120" width="128" height="128">
+        <circle className="ret-hair" cx="60" cy="60" r="54" />
+        {Array.from({ length: 60 }, (_, i) => {
+          const a = i * 6 - 90
+          const major = i % 5 === 0
+          const [x0, y0] = pt(a, 54)
+          const [x1, y1] = pt(a, major ? 50 : 52)
+          return <line key={i} className={`ret-tick ${major ? 'major' : ''}`} x1={x0} y1={y0} x2={x1} y2={y1} />
+        })}
+        {Array.from({ length: N }, (_, i) => (
+          <path
+            key={i}
+            className={`ret-seg ${i < lit ? 'lit' : ''}`}
+            d={seg(i, 42)}
+            style={{ transitionDelay: `${i * 25}ms` }}
+          />
+        ))}
+        {/* pulse wave: white glow copies faded in by opacity only - the segments
+            themselves never animate paint properties */}
+        {Array.from({ length: N }, (_, i) =>
+          i < lit ? (
+            <g
+              key={`w${i}`}
+              className="ret-segw"
+              style={{ animationDelay: `calc(var(--pd, 0ms) + ${Math.round(i * (1200 / N))}ms)` }}
+            >
+              <path className="segw-glow wide" d={seg(i, 42)} />
+              <path className="segw-glow" d={seg(i, 42)} />
+              <path className="segw-core" d={seg(i, 42)} />
+            </g>
+          ) : null
+        )}
+        <circle className="ret-hair inner" cx="60" cy="60" r="33" />
+        <circle className="ret-core" cx="60" cy="60" r="27" style={{ opacity: 0.2 + shown * 0.8 }} />
+        {[0, 90, 180, 270].map((a) => {
+          const [x, y] = pt(a, 54)
+          return <circle key={a} className="ret-node" cx={x} cy={y} r="2.2" />
+        })}
+        <text className="ret-val" x="60" y="58">
+          {value}
+          <tspan className="ret-max">/{max}</tspan>
+        </text>
+        <text className="ret-label" x="60" y="74">
+          {label}
+        </text>
+      </svg>
+      {/* rotator lives in its own svg so the spin is a whole-element transform
+          (GPU composited) instead of repainting the gauge every frame */}
+      <div className="ret-spin">
+        <svg viewBox="0 0 120 120" width="128" height="128">
+          <path className="ret-accent" d="M 60 8 A 52 52 0 0 1 112 60" />
+        </svg>
+      </div>
+    </div>
   )
 }
 
@@ -90,48 +108,47 @@ function OrbitalGauge({ value, max, label, cyan = false }) {
   const r = 45
   const c = 2 * Math.PI * r
   const [hx, hy] = pt(-90 + shown * 360, r)
+  const dash = `${c * shown} ${c}`
   return (
-    <svg
-      className="orb"
-      viewBox="0 0 120 120"
-      width="128"
-      height="128"
-      style={{ color: cyan ? 'var(--cyan-data)' : 'var(--red)' }}
-    >
-      <circle className="ret-hair" cx="60" cy="60" r="54" />
-      {Array.from({ length: 60 }, (_, i) => {
-        const a = i * 6 - 90
-        const major = i % 5 === 0
-        const [x0, y0] = pt(a, 54)
-        const [x1, y1] = pt(a, major ? 50 : 52)
-        return <line key={i} className={`ret-tick ${major ? 'major' : ''}`} x1={x0} y1={y0} x2={x1} y2={y1} />
-      })}
-      {[45, 135, 225, 315].map((a) => {
-        const [x0, y0] = pt(a, 26)
-        const [x1, y1] = pt(a, 58)
-        return <line key={a} className="orb-cross" x1={x0} y1={y0} x2={x1} y2={y1} />
-      })}
-      <circle className="orb-track" cx="60" cy="60" r={r} />
-      <circle
-        className="orb-arc"
-        cx="60"
-        cy="60"
-        r={r}
-        strokeDasharray={`${c * shown} ${c}`}
-        transform="rotate(-90 60 60)"
-      />
-      <circle className="orb-head" cx={hx} cy={hy} r="3.5" />
-      <g className="orb-spin">
-        <circle className="orb-dash" cx="60" cy="60" r="33.1" />
-      </g>
-      <text className="ret-val" x="60" y="58">
-        {value}
-        <tspan className="ret-max">/{max}</tspan>
-      </text>
-      <text className="ret-label" x="60" y="74">
-        {label}
-      </text>
-    </svg>
+    <div className="gauge-wrap" style={{ color: cyan ? 'var(--cyan-data)' : 'var(--red)' }}>
+      <svg className="orb" viewBox="0 0 120 120" width="128" height="128">
+        <circle className="ret-hair" cx="60" cy="60" r="54" />
+        {Array.from({ length: 60 }, (_, i) => {
+          const a = i * 6 - 90
+          const major = i % 5 === 0
+          const [x0, y0] = pt(a, 54)
+          const [x1, y1] = pt(a, major ? 50 : 52)
+          return <line key={i} className={`ret-tick ${major ? 'major' : ''}`} x1={x0} y1={y0} x2={x1} y2={y1} />
+        })}
+        {[45, 135, 225, 315].map((a) => {
+          const [x0, y0] = pt(a, 26)
+          const [x1, y1] = pt(a, 58)
+          return <line key={a} className="orb-cross" x1={x0} y1={y0} x2={x1} y2={y1} />
+        })}
+        <circle className="orb-track" cx="60" cy="60" r={r} />
+        <circle className="orb-arc" cx="60" cy="60" r={r} strokeDasharray={dash} transform="rotate(-90 60 60)" />
+        {/* pulse wave: opacity-only white copy of the arc (see ret-segw) */}
+        <g className="orb-arcw" style={{ animationDelay: 'var(--pd, 0ms)' }}>
+          <circle className="segw-glow wide" cx="60" cy="60" r={r} strokeDasharray={dash} transform="rotate(-90 60 60)" />
+          <circle className="segw-glow" cx="60" cy="60" r={r} strokeDasharray={dash} transform="rotate(-90 60 60)" />
+          <circle className="segw-core" cx="60" cy="60" r={r} strokeDasharray={dash} transform="rotate(-90 60 60)" />
+        </g>
+        <circle className="orb-head" cx={hx} cy={hy} r="3.5" />
+        <text className="ret-val" x="60" y="58">
+          {value}
+          <tspan className="ret-max">/{max}</tspan>
+        </text>
+        <text className="ret-label" x="60" y="74">
+          {label}
+        </text>
+      </svg>
+      {/* rotator overlay - whole-element transform, GPU composited */}
+      <div className="orb-spin">
+        <svg viewBox="0 0 120 120" width="128" height="128">
+          <circle className="orb-dash" cx="60" cy="60" r="33.1" />
+        </svg>
+      </div>
+    </div>
   )
 }
 
@@ -187,54 +204,58 @@ function BoostGauge({ value }) {
     ticks.push({ v, a, major, hot: v >= GAUGE_REDLINE })
   }
 
+  // wrapper carries the themed disc/ring - clipping styles on the svg itself
+  // get miscomputed by the app webview's legacy svg engine
   return (
-    <svg className="boost" viewBox="0 0 120 120" width="136" height="136">
-      <path className="boost-track" d={arc(GAUGE_A0, GAUGE_A0 + GAUGE_SWEEP, 52)} />
-      <path
-        className="boost-redzone"
-        d={arc(GAUGE_A0 + (GAUGE_REDLINE / GAUGE_MAX) * GAUGE_SWEEP, GAUGE_A0 + GAUGE_SWEEP, 52)}
-      />
-      {ticks.map((t, i) => {
-        const [x0, y0] = pt(t.a, 52)
-        const [x1, y1] = pt(t.a, t.major ? 44 : 48)
-        return (
-          <line
-            key={i}
-            className={`boost-tick ${t.major ? 'major' : ''} ${t.hot ? 'hot' : ''}`}
-            x1={x0}
-            y1={y0}
-            x2={x1}
-            y2={y1}
-          />
-        )
-      })}
-      {ticks
-        .filter((t) => t.major)
-        .map((t) => {
-          const [nx, ny] = pt(t.a, 35)
+    <div className="gauge-wrap">
+      <svg className="boost" viewBox="0 0 120 120" width="136" height="136">
+        <path className="boost-track" d={arc(GAUGE_A0, GAUGE_A0 + GAUGE_SWEEP, 52)} />
+        <path
+          className="boost-redzone"
+          d={arc(GAUGE_A0 + (GAUGE_REDLINE / GAUGE_MAX) * GAUGE_SWEEP, GAUGE_A0 + GAUGE_SWEEP, 52)}
+        />
+        {ticks.map((t, i) => {
+          const [x0, y0] = pt(t.a, 52)
+          const [x1, y1] = pt(t.a, t.major ? 44 : 48)
           return (
-            <text key={t.v} className={`boost-num ${t.hot ? 'hot' : ''}`} x={nx} y={ny}>
-              {t.v}
-            </text>
+            <line
+              key={i}
+              className={`boost-tick ${t.major ? 'major' : ''} ${t.hot ? 'hot' : ''}`}
+              x1={x0}
+              y1={y0}
+              x2={x1}
+              y2={y1}
+            />
           )
         })}
-      <text className="boost-label" x="60" y="46">
-        LOAD
-      </text>
-      <g
-        className="boost-needle"
-        style={{
-          transform: `rotate(${swept * GAUGE_SWEEP}deg)`,
-          transition: `transform ${sweep.dur}s ${sweep.ease}`,
-        }}
-      >
-        <path d="M 58.2 58 L 59.2 104 L 60.8 104 L 61.8 58 Z" />
-      </g>
-      <circle className="boost-hub" cx="60" cy="60" r="5" />
-      <text className="boost-val" x="93" y="92">
-        {Math.round(frac * 100)}%
-      </text>
-    </svg>
+        {ticks
+          .filter((t) => t.major)
+          .map((t) => {
+            const [nx, ny] = pt(t.a, 35)
+            return (
+              <text key={t.v} className={`boost-num ${t.hot ? 'hot' : ''}`} x={nx} y={ny}>
+                {t.v}
+              </text>
+            )
+          })}
+        <text className="boost-label" x="60" y="46">
+          LOAD
+        </text>
+        <g
+          className="boost-needle"
+          style={{
+            transform: `rotate(${swept * GAUGE_SWEEP}deg)`,
+            transition: `transform ${sweep.dur}s ${sweep.ease}`,
+          }}
+        >
+          <path d="M 58.2 58 L 59.2 104 L 60.8 104 L 61.8 58 Z" />
+        </g>
+        <circle className="boost-hub" cx="60" cy="60" r="5" />
+        <text className="boost-val" x="93" y="92">
+          {Math.round(frac * 100)}%
+        </text>
+      </svg>
+    </div>
   )
 }
 
@@ -447,7 +468,7 @@ export default function Dashboard() {
         )}
       </PageHead>
 
-      <div className="stat-row" style={{ '--pd': pulsePhase }}>
+      <div className={`stat-row ${fx.gaugeMotion ? '' : 'gauges-still'}`} style={{ '--pd': pulsePhase }}>
         <WirePanel
           title="Events"
           center

@@ -27,6 +27,57 @@ def _write(name, data):
 		json.dump(data, f, indent=1)
 	os.replace(tmp, _path(name))
 
+def get_cache(section):
+	with _lock:
+		return _read('cache.json', {}).get(section)
+
+def save_cache(section, payload):
+	with _lock:
+		cache = _read('cache.json', {})
+		cache[section] = payload
+		_write('cache.json', cache)
+
+def _mutate_cache_items(section, fn):
+	'''fn(items) -> new items; no-op until that section has synced at least once.'''
+	with _lock:
+		cache = _read('cache.json', {})
+		payload = cache.get(section)
+		if not payload:
+			return
+		payload['items'] = fn(payload.get('items', []))
+		_write('cache.json', cache)
+
+def _event_sort_key(ev):
+	start = ev.get('start', {})
+	return start.get('dateTime', start.get('date', ''))
+
+def cache_upsert_event(event):
+	def fn(items):
+		items = [e for e in items if e.get('id') != event.get('id')]
+		items.append(event)
+		items.sort(key=_event_sort_key)
+		return items
+	_mutate_cache_items('events', fn)
+
+def cache_remove_event(event_id):
+	# a recurring master's expanded instances carry ids like '<master>_<start>'
+	def fn(items):
+		return [
+			e for e in items
+			if e.get('id') != event_id and not str(e.get('id', '')).startswith(f'{event_id}_')
+		]
+	_mutate_cache_items('events', fn)
+
+def cache_upsert_task(task):
+	def fn(items):
+		items = [t for t in items if t.get('id') != task.get('id')]
+		items.append(task)
+		return items
+	_mutate_cache_items('tasks', fn)
+
+def cache_remove_task(task_id):
+	_mutate_cache_items('tasks', lambda items: [t for t in items if t.get('id') != task_id])
+
 def list_accounts():
 	with _lock:
 		return _read('accounts.json', [])

@@ -1,0 +1,284 @@
+/* phosphor crt terminal theme: one green channel, VT323 display type, square
+   boxes, scanlines, blinking cursor. the red AND cyan var channels both
+   collapse into green tiers so the whole app reads single-phosphor. scoped
+   under [data-theme='terminal']; theme.css stays the base. the only new
+   animation is the cursor blink - HTML-level opacity, GPU-safe */
+
+[data-theme='terminal'] {
+  --bg-void: #030904;
+  --bg-panel: #051208;
+  --bg-raised: #08200f;
+  --bg-input: #04150b;
+
+  --red: #33ff77;
+  --red-bright: #9dffbe;
+  --red-dim: #0f8f3f;
+  --red-line: rgb(51 255 119 / 0.5);
+  --red-ghost: rgb(51 255 119 / 0.07);
+
+  /* highlight channel = brighter "white phosphor" */
+  --cyan: #dfffe9;
+  --cyan-data: #dfffe9;
+  --cyan-dim: #4faf72;
+  --cyan-ghost: rgb(223 255 233 / 0.06);
+
+  --text-hi: #d3ffe0;
+  --text-mid: #9ce8b4;
+  --text-low: #5fb87e;
+
+  --ink-on-red: #02140a;
+
+  --font-display: 'VT323', 'JetBrains Mono', monospace;
+}
+
+/* ---------- canvas: phosphor bloom, heavy scanlines, green grid ---------- */
+
+[data-theme='terminal'] body::before {
+  background: radial-gradient(1100px 700px at 50% 40%, rgb(51 255 119 / 0.05), transparent 70%);
+}
+
+[data-theme='terminal'] body::after {
+  background:
+    repeating-linear-gradient(0deg, rgb(0 0 0 / 0.24) 0 1px, transparent 1px 3px),
+    radial-gradient(ellipse at center, transparent 58%, rgb(0 0 0 / 0.52));
+}
+
+[data-theme='terminal'] .bg-fx {
+  background:
+    linear-gradient(rgb(51 255 119 / 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(51 255 119 / 0.045) 1px, transparent 1px);
+  background-size: 44px 44px;
+}
+
+/* the sweep beam becomes the crt refresh band */
+[data-theme='terminal'] .bg-fx::after {
+  background: linear-gradient(
+    180deg,
+    transparent,
+    rgb(51 255 119 / 0.04),
+    rgb(51 255 119 / 0.1),
+    rgb(51 255 119 / 0.04),
+    transparent
+  );
+}
+
+[data-theme='terminal'] .embers { display: none; }
+
+[data-theme='terminal'] ::selection { background: var(--red); color: var(--ink-on-red); }
+
+/* ---------- type: VT323 display, phosphor glow, prompt markers ---------- */
+
+/* VT323 ships one weight - pin 400 and bump sizes since it runs small */
+[data-theme='terminal'] :is(.page-title, .np-title, .wp-title, .panel-title, .logo, .nav-label, .hbtn, .ret-val, .boost-val, .note-row-title, .cal-daylabel, .filter-chip, .sess-chip, .tool-chip, .msg .msg-label, .drop-overlay .big, .etitle) {
+  font-weight: 400;
+}
+
+[data-theme='terminal'] .page-title { font-size: 26px; letter-spacing: 2px; }
+
+[data-theme='terminal'] .np-title,
+[data-theme='terminal'] .wp-title,
+[data-theme='terminal'] .panel-title { font-size: 19px; letter-spacing: 1.5px; }
+
+[data-theme='terminal'] :is(.page-title, .np-title, .wp-title, .panel-title, .logo, .nav-label) {
+  text-shadow: 0 0 7px rgb(51 255 119 / 0.45);
+}
+
+[data-theme='terminal'] .page-title .slash { text-shadow: 0 0 8px rgb(51 255 119 / 0.7); }
+
+[data-theme='terminal'] :is(.np-title, .wp-title, .panel-title)::before {
+  content: '> ';
+  color: var(--red);
+}
+
+/* blinking block cursor after the page title */
+[data-theme='terminal'] .page-title::after {
+  content: '▊';
+  margin-left: 4px;
+  color: var(--red);
+  animation: crtblink 1.06s steps(1) infinite;
+}
+
+@keyframes crtblink {
+  0%, 49% { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+
+/* ---------- panels: square flat boxes, faint inner phosphor wash ---------- */
+
+[data-theme='terminal'] .np,
+[data-theme='terminal'] .wp,
+[data-theme='terminal'] .panel-frame,
+[data-theme='terminal'] .vp {
+  clip-path: none;
+  filter: none;
+  background: var(--red-line);
+}
+
+[data-theme='terminal'] .np-in,
+[data-theme='terminal'] .wp-in,
+[data-theme='terminal'] .panel-body,
+[data-theme='terminal'] .vp-in {
+  clip-path: none;
+  background: var(--bg-panel);
+  box-shadow: inset 0 0 46px rgb(51 255 119 / 0.05);
+}
+
+[data-theme='terminal'] .np-line .npd { box-shadow: 0 0 6px rgb(51 255 119 / 0.7); }
+
+/* the base gradient tail hardcodes red */
+[data-theme='terminal'] .np-line .npl {
+  background: linear-gradient(90deg, currentColor, rgb(51 255 119 / 0.25));
+}
+
+[data-theme='terminal'] .wp-wire { filter: drop-shadow(0 0 5px rgb(51 255 119 / 0.5)); }
+
+[data-theme='terminal'] .vp-vents-tr,
+[data-theme='terminal'] .vp-vents-bl { filter: drop-shadow(0 0 5px rgb(51 255 119 / 0.5)); }
+
+/* ---------- tags: [bracketed] readouts, inverse video for warnings ---------- */
+
+[data-theme='terminal'] .tag {
+  border: none;
+  background: transparent;
+  padding: 2px 0;
+  gap: 4px;
+  font-weight: 500;
+}
+
+[data-theme='terminal'] .tag::before { content: '['; opacity: 0.65; }
+[data-theme='terminal'] .tag::after { content: ']'; opacity: 0.65; }
+
+[data-theme='terminal'] .tag.warn {
+  background: var(--red);
+  color: var(--ink-on-red);
+  padding: 2px 8px;
+}
+
+[data-theme='terminal'] .tag.warn::before,
+[data-theme='terminal'] .tag.warn::after { content: none; }
+
+[data-theme='terminal'] .tag.solid {
+  background: var(--red-dim);
+  color: var(--text-hi);
+  padding: 2px 8px;
+}
+
+[data-theme='terminal'] .tag.solid::before,
+[data-theme='terminal'] .tag.solid::after { content: none; }
+
+/* ---------- buttons: hollow, inverse on hover ---------- */
+
+[data-theme='terminal'] .hbtn {
+  font-size: 16px;
+  letter-spacing: 2px;
+  background: transparent;
+  border: 1px solid var(--red-dim);
+  color: var(--red);
+}
+
+[data-theme='terminal'] .hbtn.small { font-size: 14px; }
+
+[data-theme='terminal'] .hbtn .hbk { display: none; }
+
+[data-theme='terminal'] .hbtn:hover {
+  background: var(--red);
+  color: var(--ink-on-red);
+  text-shadow: none;
+  border-color: var(--red);
+}
+
+[data-theme='terminal'] .hbtn.primary {
+  background: rgb(51 255 119 / 0.12);
+  border-color: var(--red);
+}
+
+/* ---------- gauges: green line-art, phosphor glows ---------- */
+
+[data-theme='terminal'] .ret-core {
+  fill: rgb(51 255 119 / 0.14);
+  stroke: rgb(51 255 119 / 0.35);
+  filter: drop-shadow(0 0 10px rgb(51 255 119 / 0.45));
+}
+
+[data-theme='terminal'] .boost-redzone { filter: drop-shadow(0 0 4px rgb(51 255 119 / 0.7)); }
+
+[data-theme='terminal'] .boost-needle path { filter: drop-shadow(0 0 4px rgb(51 255 119 / 0.6)); }
+
+[data-theme='terminal'] .boost-hub { fill: #041108; }
+
+/* tiny svg labels stay in the readable mono, not the pixel font */
+[data-theme='terminal'] .ret-label,
+[data-theme='terminal'] .boost-label,
+[data-theme='terminal'] .boost-num { font-family: var(--font-mono); font-weight: 500; }
+
+/* ---------- rows + controls ---------- */
+
+[data-theme='terminal'] .now-line .line { box-shadow: 0 0 6px rgb(223 255 233 / 0.6); }
+
+[data-theme='terminal'] .finput:focus { box-shadow: 0 0 10px rgb(51 255 119 / 0.25); }
+
+[data-theme='terminal'] .composer textarea:focus { box-shadow: 0 0 12px rgb(51 255 119 / 0.22); }
+
+[data-theme='terminal'] .toggle.on { box-shadow: none; }
+
+[data-theme='terminal'] .toggle.on::after { box-shadow: 0 0 8px rgb(51 255 119 / 0.8); }
+
+[data-theme='terminal'] input[type='range'].cyber::-webkit-slider-thumb {
+  box-shadow: 0 0 9px rgb(51 255 119 / 0.8);
+}
+
+[data-theme='terminal'] .csel-list {
+  background: #041108;
+  border-color: var(--red);
+  box-shadow: 0 10px 28px rgb(0 0 0 / 0.6), 0 0 14px rgb(51 255 119 / 0.2);
+}
+
+[data-theme='terminal'] .dot { box-shadow: 0 0 6px rgb(223 255 233 / 0.8); }
+
+/* ---------- sidebar: green shells (base art is var-driven, these are the
+   hardcoded red pieces) ---------- */
+
+[data-theme='terminal'] .sidebar {
+  background: #030a05;
+  box-shadow: inset -12px 0 24px -18px rgb(51 255 119 / 0.4);
+}
+
+[data-theme='terminal'] .logo {
+  font-size: 30px;
+  letter-spacing: 3px;
+  text-shadow: 0 0 8px rgb(51 255 119 / 0.75), 0 0 26px rgb(51 255 119 / 0.35);
+}
+
+[data-theme='terminal'] .nav-label { font-size: 17px; letter-spacing: 2px; }
+
+[data-theme='terminal'] .sidebar-foot { border-top-color: rgb(51 255 119 / 0.3); }
+
+[data-theme='terminal'] .forge-shell.v-tab:not(.active) {
+  background: rgb(51 255 119 / 0.5);
+  color: rgb(51 255 119 / 0.55);
+}
+
+[data-theme='terminal'] .forge-shell.v-tab:not(.active) .forge-shell-in {
+  background: linear-gradient(175deg, #06180d, #04110a 60%);
+}
+
+[data-theme='terminal'] .forge-shell-fill { background: linear-gradient(180deg, #2fe06c, #17a848); }
+
+[data-theme='terminal'] .flare-light.active .forge-shell-fill,
+[data-theme='terminal'] .v-tab.flare-light.active .forge-shell-fill {
+  background: linear-gradient(120deg, #56ff92, #2fe06c 45%, #128a3a);
+}
+
+[data-theme='terminal'] .flare-wash .forge-shell-in { box-shadow: inset 0 0 80px rgb(51 255 119 / 0.14); }
+
+[data-theme='terminal'] :is(.forge-wire, .forge-wire2, .forge-wire3, .forge-stripes, .forge-stripes-v, .forge-stripes-b) {
+  filter: drop-shadow(0 0 5px rgb(51 255 119 / 0.5));
+}
+
+[data-theme='terminal'] .forge-shell.active :is(.forge-wire, .forge-wire2, .forge-wire3, .forge-stripes, .forge-stripes-v, .forge-stripes-b) {
+  filter: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-theme='terminal'] .page-title::after { animation: none; }
+}

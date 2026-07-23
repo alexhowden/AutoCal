@@ -1,11 +1,13 @@
 import asyncio
 import json
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from googleapiclient.errors import HttpError
 from pydantic import BaseModel
+from . import sync
 from .agent import (
 	agent_call,
 	agent_stream,
@@ -14,11 +16,16 @@ from .agent import (
 	get_service,
 	google_status,
 	link_account,
+	resolve_account,
 	set_primary_account,
 	unlink_account,
 	_clients,
 )
 from .store import (
+	cache_remove_event,
+	cache_remove_task,
+	cache_upsert_event,
+	cache_upsert_task,
 	log_activity,
 	read_activity,
 	list_notes,
@@ -29,7 +36,13 @@ from .store import (
 	update_settings,
 )
 
-app = FastAPI()
+@asynccontextmanager
+async def lifespan(app):
+	loop = asyncio.create_task(sync.sync_loop())
+	yield
+	loop.cancel()
+
+app = FastAPI(lifespan=lifespan)
 
 app.add_middleware(
 	CORSMiddleware,
@@ -60,6 +73,11 @@ async def run_gcal(op):
 
 @app.get("/events")
 async def list_events(timeMin: str, timeMax: str, maxResults: int = 250):
+	cached = sync.cached_events(timeMin, timeMax)
+	if cached is not None:
+		return cached[:maxResults]
+
+	# outside the mirrored window (or never synced) - fall through to a live pull
 	def op():
 		merged = []
 		for acct in get_accounts():
@@ -88,6 +106,9 @@ async def create_event(body: dict, account: str | None = None):
 	event = await run_gcal(lambda: get_service(account=account).events().insert(
 		calendarId='primary', body=body
 	).execute())
+	event['account'] = resolve_account(account)
+	cache_upsert_event(event)
+	sync.schedule_refresh()
 	log_activity('CREATE', f"EVT {event.get('summary')} // {event['start'].get('dateTime', event['start'].get('date', ''))[:16]}", 'ui')
 	return event
 
@@ -97,6 +118,9 @@ async def patch_event(event_id: str, body: dict, account: str | None = None):
 	event = await run_gcal(lambda: get_service(account=account).events().patch(
 		calendarId='primary', eventId=event_id, body=body
 	).execute())
+	event['account'] = resolve_account(account)
+	cache_upsert_event(event)
+	sync.schedule_refresh()
 	log_activity('EDIT', f"EVT {event.get('summary')} updated", 'ui')
 	return event
 
@@ -106,21 +130,28 @@ async def delete_event(event_id: str, account: str | None = None):
 		get_service(account=account).events().delete(calendarId='primary', eventId=event_id).execute()
 		return {'ok': True}
 	result = await run_gcal(op)
+	cache_remove_event(event_id)
+	sync.schedule_refresh()
 	log_activity('DELETE', f'EVT {event_id} removed', 'ui')
 	return result
 
 TASK_FIELDS = {'title', 'notes', 'due', 'status', 'completed'}
 
-@app.get("/tasks")
-async def list_tasks():
-	# showHidden=False keeps cleared history out - matches the Google Tasks app view
-	result = await run_gcal(lambda: get_service('tasks').tasks().list(
-		tasklist='@default', showCompleted=True, showHidden=False, maxResults=100
-	).execute())
-	items = result.get('items', [])
+def _sort_tasks(items):
 	pending = sorted((t for t in items if t.get('status') != 'completed'), key=lambda t: t.get('position', ''))
 	done = sorted((t for t in items if t.get('status') == 'completed'), key=lambda t: t.get('completed', ''), reverse=True)
 	return pending + done
+
+@app.get("/tasks")
+async def list_tasks():
+	items = sync.cached_tasks()
+	if items is None:
+		# showHidden=False keeps cleared history out - matches the Google Tasks app view
+		result = await run_gcal(lambda: get_service('tasks').tasks().list(
+			tasklist='@default', showCompleted=True, showHidden=False, maxResults=100
+		).execute())
+		items = result.get('items', [])
+	return _sort_tasks(items)
 
 @app.post("/tasks")
 async def create_task(body: dict):
@@ -128,6 +159,8 @@ async def create_task(body: dict):
 	task = await run_gcal(lambda: get_service('tasks').tasks().insert(
 		tasklist='@default', body=body
 	).execute())
+	cache_upsert_task(task)
+	sync.schedule_refresh()
 	log_activity('CREATE', f"TASK {task.get('title')}", 'ui')
 	return task
 
@@ -137,6 +170,8 @@ async def patch_task(task_id: str, body: dict):
 	task = await run_gcal(lambda: get_service('tasks').tasks().patch(
 		tasklist='@default', task=task_id, body=body
 	).execute())
+	cache_upsert_task(task)
+	sync.schedule_refresh()
 	verb = 'completed' if task.get('status') == 'completed' else 'updated'
 	log_activity('EDIT', f"TASK {task.get('title')} {verb}", 'ui')
 	return task
@@ -147,6 +182,8 @@ async def delete_task(task_id: str):
 		get_service('tasks').tasks().delete(tasklist='@default', task=task_id).execute()
 		return {'ok': True}
 	result = await run_gcal(op)
+	cache_remove_task(task_id)
+	sync.schedule_refresh()
 	log_activity('DELETE', f'TASK {task_id} removed', 'ui')
 	return result
 
@@ -163,7 +200,13 @@ async def status():
 	return {
 		'agent': {'ready': True, 'sessions': len(_clients)},
 		'google': await asyncio.to_thread(google_status),
+		'sync': sync.last_sync(),
 	}
+
+@app.post("/sync")
+async def force_sync():
+	await sync.refresh()
+	return {'ok': True, **sync.last_sync()}
 
 @app.post("/auth/google")
 async def auth_google():
@@ -172,6 +215,7 @@ async def auth_google():
 	except Exception as e:
 		raise HTTPException(status_code=502, detail=f'consent flow failed: {e}')
 	log_activity('SYNC', f'google account {email} linked', 'ui')
+	sync.schedule_refresh()
 	return {'ok': True, 'email': email}
 
 @app.post("/accounts/{email}/primary")
@@ -187,6 +231,7 @@ async def account_unlink(email: str):
 	if not removed:
 		raise HTTPException(status_code=404, detail='account not linked')
 	log_activity('SYNC', f'google account {email} unlinked', 'ui')
+	sync.schedule_refresh()
 	return {'ok': True}
 
 @app.get("/activity")
@@ -216,9 +261,12 @@ async def notes_delete(note_id: str):
 @app.post("/tasks/{task_id}/move")
 async def move_task(task_id: str, previous: str | None = None):
 	kwargs = {'previous': previous} if previous else {}
-	return await run_gcal(lambda: get_service('tasks').tasks().move(
+	task = await run_gcal(lambda: get_service('tasks').tasks().move(
 		tasklist='@default', task=task_id, **kwargs
 	).execute())
+	cache_upsert_task(task)
+	sync.schedule_refresh()
+	return task
 
 @app.delete("/chat/sessions/{user_id}")
 async def chat_close(user_id: str):

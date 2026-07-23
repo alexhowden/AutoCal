@@ -926,32 +926,39 @@ body::after {
   text-anchor: middle;
 }
 
-/* gauge pulse: lit pieces replay the load sweep each 6s cycle, phase-locked
-   to the sidebar loop via --pd + per-piece inline animation-delay */
-.wp-pulse .ret-seg.lit { animation: segwave 6s linear infinite; }
+/* gauge pulse: white glow copies of the lit pieces, faded in by OPACITY only,
+   phase-locked to the sidebar loop via --pd + per-piece inline animation-delay.
+   animating stroke/filter here repainted the gauges continuously - never again */
+.ret-segw,
+.orb-arcw { opacity: 0; pointer-events: none; }
 
-@keyframes segwave {
-  0% { stroke: currentColor; }
-  3% { stroke: #ffffff; filter: drop-shadow(0 0 8px currentColor); }
-  13% { stroke: currentColor; }
-  100% { stroke: currentColor; }
-}
+.segw-core { fill: none; stroke: #ffffff; stroke-width: 6; }
 
-.wp-pulse .orb-arc {
-  animation: orbwave 6s linear infinite;
-  animation-delay: var(--pd, 0ms);
-}
+.segw-glow { fill: none; stroke: currentColor; stroke-width: 10; opacity: 0.3; }
 
-@keyframes orbwave {
-  0% { stroke: currentColor; }
-  3% { stroke: #ffffff; filter: drop-shadow(0 0 9px currentColor); }
-  14% { stroke: currentColor; }
-  100% { stroke: currentColor; }
+.segw-glow.wide { stroke-width: 15; opacity: 0.14; }
+
+.orb-arcw .segw-core { stroke-width: 7; }
+
+.orb-arcw .segw-glow { stroke-width: 11; }
+
+.orb-arcw .segw-glow.wide { stroke-width: 16; }
+
+.orb-arcw circle { transition: stroke-dasharray .9s cubic-bezier(.22, 1, .36, 1); }
+
+.wp-pulse .ret-segw,
+.wp-pulse .orb-arcw { animation: wavefade 6s linear infinite; }
+
+@keyframes wavefade {
+  0% { opacity: 0; }
+  3% { opacity: 1; }
+  13% { opacity: 0; }
+  100% { opacity: 0; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .wp-pulse .ret-seg.lit,
-  .wp-pulse .orb-arc { animation: none; }
+  .wp-pulse .ret-segw,
+  .wp-pulse .orb-arcw { animation: none; }
 }
 
 /* reticle gauge (events) */
@@ -983,10 +990,23 @@ body::after {
   filter: drop-shadow(0 0 10px rgb(255 42 69 / calc(0.5 * var(--glow-mult))));
 }
 
-.ret-spin {
-  transform-origin: 60px 60px;
-  animation: retspin 22s linear infinite;
+/* rotator overlays: separate svgs stacked on the gauge, spun as whole elements
+   so the rotation composites on the GPU instead of repainting the gauge svg */
+.gauge-wrap { position: relative; display: inline-block; line-height: 0; }
+
+.ret-spin,
+.orb-spin {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  transform-origin: 50% 50%;
+  will-change: transform;
 }
+
+.ret-spin svg,
+.orb-spin svg { display: block; }
+
+.ret-spin { animation: retspin 22s linear infinite; }
 
 .ret-accent {
   fill: none;
@@ -1041,10 +1061,7 @@ body::after {
   transition: cx .9s cubic-bezier(.22, 1, .36, 1), cy .9s cubic-bezier(.22, 1, .36, 1);
 }
 
-.orb-spin {
-  transform-origin: 60px 60px;
-  animation: retspin 30s linear infinite reverse;
-}
+.orb-spin { animation: retspin 30s linear infinite reverse; }
 
 .orb-dash {
   fill: none;
@@ -1058,6 +1075,13 @@ body::after {
   .ret-spin,
   .orb-spin { animation: none; }
 }
+
+/* ambient-motion setting: gauge motion off = spinners parked, waves silent */
+.gauges-still .ret-spin,
+.gauges-still .orb-spin { animation: none; will-change: auto; }
+
+.gauges-still .ret-segw,
+.gauges-still .orb-arcw { animation: none; }
 
 
 

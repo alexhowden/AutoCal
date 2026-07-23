@@ -1,0 +1,416 @@
+/* cartoon theme ("anime night"): cel-shaded comic look - flat color, thick ink
+   outlines with hand-drawn wobble, hard offset shadows, white shine ticks.
+   everything scopes under [data-theme='cartoon']; theme.css stays the base.
+   no new animations here - all decoration is static paint (see the webkit
+   animation perf rules before adding any) */
+
+[data-theme='cartoon'] {
+  --bg-void: #131320;
+  --bg-panel: #23233c;
+  --bg-raised: #2b2b49;
+  --bg-input: #1c1c30;
+
+  /* ink = the outline color, paper = bright fills for buttons/knobs */
+  --ink: #0a0a16;
+  --paper: #fff3dd;
+
+  --red-dim: #a02037;
+  --red-line: #ff2a45;
+  --red-ghost: rgb(255 42 69 / 0.1);
+
+  --text-hi: #fff8ec;
+  --text-mid: #eae2cf;
+  --text-low: #c9c0ab;
+
+  --font-display: 'Bangers', 'Chakra Petch', sans-serif;
+  --font-comic: 'Comic Neue', sans-serif;
+  --font-mono: 'Comic Neue', 'JetBrains Mono', sans-serif;
+}
+
+/* ---------- canvas ---------- */
+
+/* glow washes -> one faint flat tint */
+[data-theme='cartoon'] body::before {
+  background: radial-gradient(900px 520px at 85% -10%, rgb(255 42 69 / 0.06), transparent 60%);
+}
+
+/* scanlines -> halftone dot screen + heavier vignette */
+[data-theme='cartoon'] body::after {
+  background:
+    radial-gradient(rgb(255 255 255 / 0.028) 1.2px, transparent 1.2px),
+    radial-gradient(ellipse at center, transparent 66%, rgb(0 0 0 / 0.3));
+  background-size: 11px 11px, 100% 100%;
+}
+
+/* grid, sweep beam and embers are cyberpunk furniture */
+[data-theme='cartoon'] .bg-fx { background: none; }
+[data-theme='cartoon'] .bg-fx::after { display: none; }
+[data-theme='cartoon'] .embers { display: none; }
+
+[data-theme='cartoon'] ::selection { background: var(--red); color: var(--ink); }
+
+[data-theme='cartoon'] ::-webkit-scrollbar-thumb { background: var(--red); border-radius: 4px; }
+[data-theme='cartoon'] ::-webkit-scrollbar-thumb:hover { background: var(--red-bright); }
+
+/* ---------- type ---------- */
+
+/* bangers ships one weight - synthetic bold looks smeared, so pin 400
+   everywhere the base sheet asks for 600/700 display text */
+[data-theme='cartoon'] .page-title,
+[data-theme='cartoon'] .np-title,
+[data-theme='cartoon'] .wp-title,
+[data-theme='cartoon'] .panel-title,
+[data-theme='cartoon'] .logo,
+[data-theme='cartoon'] .nav-label,
+[data-theme='cartoon'] .hbtn,
+[data-theme='cartoon'] .ret-val,
+[data-theme='cartoon'] .boost-val,
+[data-theme='cartoon'] .note-row-title,
+[data-theme='cartoon'] .cal-daylabel,
+[data-theme='cartoon'] .filter-chip,
+[data-theme='cartoon'] .sess-chip,
+[data-theme='cartoon'] .tool-chip,
+[data-theme='cartoon'] .msg .msg-label,
+[data-theme='cartoon'] .drop-overlay .big,
+[data-theme='cartoon'] .etitle { font-weight: 400; }
+
+[data-theme='cartoon'] .page-title {
+  font-size: 24px;
+  letter-spacing: 1.5px;
+  text-shadow: 3px 3px 0 var(--ink);
+}
+
+[data-theme='cartoon'] .page-title .slash { text-shadow: 3px 3px 0 var(--ink); }
+
+[data-theme='cartoon'] .np-title,
+[data-theme='cartoon'] .wp-title,
+[data-theme='cartoon'] .panel-title {
+  font-size: 17px;
+  letter-spacing: 1.2px;
+  color: var(--text-hi);
+  text-shadow: 2px 2px 0 var(--ink);
+}
+
+[data-theme='cartoon'] .micro { font-weight: 700; letter-spacing: 1px; }
+
+/* ---------- panels: ink wrapper + flat fill + wobbly radius ---------- */
+
+[data-theme='cartoon'] .np,
+[data-theme='cartoon'] .wp,
+[data-theme='cartoon'] .panel-frame {
+  padding: 3px;
+  background: var(--ink);
+  clip-path: none;
+  filter: none;
+  border-radius: 17px 14px 18px 13px / 13px 18px 14px 17px;
+  box-shadow: 7px 8px 0 rgb(0 0 0 / 0.35);
+}
+
+[data-theme='cartoon'] .np-in,
+[data-theme='cartoon'] .wp-in,
+[data-theme='cartoon'] .panel-body {
+  background: var(--bg-panel);
+  clip-path: none;
+  border-radius: 14px 11px 15px 10px / 10px 15px 11px 14px;
+  position: relative;
+  overflow: hidden;
+}
+
+/* stat cards keep their maroon interior, flattened to one cel */
+[data-theme='cartoon'] .wp-in { background: #451527; }
+
+/* painted specular streak along the top edge */
+[data-theme='cartoon'] .np-in::before,
+[data-theme='cartoon'] .wp-in::before {
+  content: '';
+  position: absolute;
+  top: 6px;
+  left: 16px;
+  width: 92px;
+  height: 6px;
+  border-radius: 5px;
+  background: rgb(255 255 255 / 0.1);
+  transform: rotate(-1.5deg);
+  pointer-events: none;
+}
+
+/* comic hatch ticks, top-right of the stat cards (their heads have no
+   right-side content, so nothing collides) */
+[data-theme='cartoon'] .wp-in::after {
+  content: '';
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  width: 40px;
+  height: 15px;
+  background: repeating-linear-gradient(64deg, rgb(255 255 255 / 0.3) 0 2.5px, transparent 2.5px 11px);
+  transform: rotate(6deg);
+  pointer-events: none;
+}
+
+/* node line: keep the beloved dots, ink-flat */
+[data-theme='cartoon'] .np-line .npd { box-shadow: none; }
+[data-theme='cartoon'] .np-line .npl { height: 3px; border-radius: 2px; background: currentColor; }
+
+/* wire ornament: same shapes, no glow */
+[data-theme='cartoon'] .wp-wire { filter: none; }
+
+/* ---------- buttons: paper fill, ink outline, press-down shadow ---------- */
+
+[data-theme='cartoon'] .hbtn {
+  padding: 7px 20px;
+  font-size: 15px;
+  letter-spacing: 1.5px;
+  color: var(--ink);
+  background: var(--paper);
+  border: 2.5px solid var(--ink);
+  border-radius: 11px 9px 12px 8px / 8px 12px 9px 11px;
+  box-shadow: 3px 4px 0 var(--ink);
+  transition: transform .1s, box-shadow .1s, background .1s;
+}
+
+[data-theme='cartoon'] .hbtn .hbk { display: none; }
+
+[data-theme='cartoon'] .hbtn:hover {
+  background: #ffffff;
+  text-shadow: none;
+  transform: translate(-1px, -1px);
+  box-shadow: 4px 5px 0 var(--ink);
+}
+
+[data-theme='cartoon'] .hbtn:active {
+  transform: translate(2px, 2px);
+  box-shadow: 1px 1px 0 var(--ink);
+}
+
+[data-theme='cartoon'] .hbtn.primary { background: var(--red); }
+[data-theme='cartoon'] .hbtn.primary:hover { background: var(--red-bright); }
+
+[data-theme='cartoon'] .hbtn.small {
+  padding: 4px 13px;
+  font-size: 13px;
+  letter-spacing: 1px;
+  box-shadow: 2px 3px 0 var(--ink);
+}
+
+/* ---------- tags: flat pills with ink outlines ---------- */
+
+[data-theme='cartoon'] .tag {
+  padding: 2px 10px;
+  font-family: var(--font-comic);
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  border: 2px solid var(--ink);
+  border-radius: 999px;
+  background: var(--bg-raised);
+  color: var(--text-hi);
+  box-shadow: 2px 2px 0 rgb(0 0 0 / 0.4);
+}
+
+[data-theme='cartoon'] .tag.solid { background: var(--red); color: var(--paper); border-color: var(--ink); }
+[data-theme='cartoon'] .tag.bright { background: var(--red-bright); color: var(--ink); border-color: var(--ink); }
+[data-theme='cartoon'] .tag.cyan { background: var(--cyan); color: var(--ink); border-color: var(--ink); }
+[data-theme='cartoon'] .tag.warn { background: var(--red); color: var(--ink); border-color: var(--ink); }
+[data-theme='cartoon'] .tag.dim {
+  background: transparent;
+  border-color: rgb(255 255 255 / 0.4);
+  color: var(--text-mid);
+  box-shadow: none;
+}
+
+/* ---------- gauges: flat cel dials in inked circles ---------- */
+
+/* the disc lives on the wrapper div, never on an svg - border-radius clips
+   svg painting and the app webview's legacy engine computes that clip short */
+[data-theme='cartoon'] .gauge-wrap {
+  border-radius: 50%;
+  background: #1a1a2c;
+  box-shadow: 0 0 0 3px var(--ink), 5px 6px 0 rgb(0 0 0 / 0.35);
+}
+
+/* shine ticks where light catches the dial, like the hood of the car */
+[data-theme='cartoon'] .gauge-wrap::after {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 9px;
+  width: 26px;
+  height: 12px;
+  background: repeating-linear-gradient(115deg, rgb(255 255 255 / 0.38) 0 2.5px, transparent 2.5px 9px);
+  transform: rotate(-32deg);
+  pointer-events: none;
+}
+
+[data-theme='cartoon'] .ret-seg.lit { filter: none; }
+[data-theme='cartoon'] .ret-core {
+  fill: rgb(255 42 69 / 0.22);
+  stroke: var(--ink);
+  stroke-width: 2;
+  filter: none;
+}
+
+/* pulse wave keeps only its white core - a clean anime shine sweep */
+[data-theme='cartoon'] .segw-glow { display: none; }
+
+[data-theme='cartoon'] .ret-val { paint-order: stroke; stroke: var(--ink); stroke-width: 2px; }
+[data-theme='cartoon'] .ret-val .ret-max { stroke-width: 1px; }
+
+[data-theme='cartoon'] .orb-arc { filter: none; stroke-linecap: round; }
+[data-theme='cartoon'] .orb-head { filter: none; stroke: var(--ink); stroke-width: 1.5; }
+
+/* tiny svg labels are unreadable in bangers - comic body font instead */
+[data-theme='cartoon'] .ret-label,
+[data-theme='cartoon'] .boost-label,
+[data-theme='cartoon'] .boost-num { font-family: var(--font-comic); font-weight: 700; }
+
+[data-theme='cartoon'] .boost-track { stroke: rgb(255 255 255 / 0.16); }
+[data-theme='cartoon'] .boost-redzone { filter: none; stroke-width: 5; stroke-linecap: round; }
+[data-theme='cartoon'] .boost-needle path { filter: none; stroke: var(--ink); stroke-width: 1; }
+[data-theme='cartoon'] .boost-hub { fill: var(--paper); stroke: var(--ink); stroke-width: 2.5; }
+[data-theme='cartoon'] .boost-val { paint-order: stroke; stroke: var(--ink); stroke-width: 1.5px; }
+
+/* ---------- agenda + tasks ---------- */
+
+[data-theme='cartoon'] .agenda-item,
+[data-theme='cartoon'] .task-row,
+[data-theme='cartoon'] .setting-row,
+[data-theme='cartoon'] .proto-row { border-bottom: 2px dashed rgb(255 255 255 / 0.12); }
+
+[data-theme='cartoon'] .agenda-item:last-child,
+[data-theme='cartoon'] .task-row:last-child,
+[data-theme='cartoon'] .setting-row:last-child,
+[data-theme='cartoon'] .proto-row:last-child { border-bottom: none; }
+
+[data-theme='cartoon'] .agenda-item { border-radius: 8px; }
+[data-theme='cartoon'] .agenda-item:hover { background: rgb(255 255 255 / 0.05); }
+[data-theme='cartoon'] .agenda-time { font-weight: 700; }
+
+[data-theme='cartoon'] .checkbox {
+  width: 15px;
+  height: 15px;
+  background: var(--paper);
+  border: 2px solid var(--ink);
+  border-radius: 4px 3px 5px 3px;
+  color: var(--red);
+  font-weight: 700;
+}
+
+[data-theme='cartoon'] .checkbox.checked { border-color: var(--ink); box-shadow: none; }
+
+[data-theme='cartoon'] .now-line .line {
+  height: 3px;
+  border-radius: 2px;
+  box-shadow: none;
+}
+
+/* ---------- inputs + controls ---------- */
+
+[data-theme='cartoon'] .finput {
+  border: 2px solid rgb(255 255 255 / 0.25);
+  border-radius: 8px 7px 9px 6px;
+}
+
+[data-theme='cartoon'] .finput:focus {
+  border-color: var(--red);
+  box-shadow: 2px 3px 0 rgb(0 0 0 / 0.4);
+}
+
+[data-theme='cartoon'] .etitle {
+  font-size: 20px;
+  letter-spacing: 1px;
+  border-radius: 0;
+  border: none;
+  border-bottom: 2px solid rgb(255 255 255 / 0.2);
+}
+
+[data-theme='cartoon'] .etitle:focus { border-color: var(--red); box-shadow: none; }
+
+[data-theme='cartoon'] .csel-btn {
+  border: 2px solid rgb(255 255 255 / 0.25);
+  border-radius: 9px 8px 10px 7px;
+  font-family: var(--font-comic);
+  font-weight: 700;
+}
+
+[data-theme='cartoon'] .csel-btn:hover,
+[data-theme='cartoon'] .csel-btn:focus { border-color: var(--red); }
+
+[data-theme='cartoon'] .csel-list {
+  background: var(--bg-raised);
+  border: 2.5px solid var(--ink);
+  border-radius: 10px;
+  box-shadow: 5px 6px 0 rgb(0 0 0 / 0.45);
+  overflow: hidden;
+}
+
+[data-theme='cartoon'] .color-pop {
+  border: 2.5px solid var(--ink);
+  border-radius: 10px;
+  box-shadow: 5px 6px 0 rgb(0 0 0 / 0.45);
+}
+
+[data-theme='cartoon'] .toggle {
+  width: 42px;
+  height: 22px;
+  border: 2.5px solid var(--ink);
+  border-radius: 999px;
+  background: var(--bg-raised);
+}
+
+[data-theme='cartoon'] .toggle::after {
+  top: 2px;
+  left: 2px;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: var(--paper);
+  box-shadow: none;
+}
+
+[data-theme='cartoon'] .toggle.on {
+  background: var(--red);
+  border-color: var(--ink);
+  box-shadow: none;
+}
+
+[data-theme='cartoon'] .toggle.on::after { left: 22px; }
+
+[data-theme='cartoon'] input[type='range'].cyber {
+  height: 8px;
+  border-radius: 4px;
+  background: var(--red);
+  border: 2px solid var(--ink);
+}
+
+[data-theme='cartoon'] input[type='range'].cyber::-webkit-slider-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--paper);
+  border: 2.5px solid var(--ink);
+  box-shadow: none;
+}
+
+/* ---------- sidebar (light pass - tab shells get their own treatment later) ---------- */
+
+[data-theme='cartoon'] .sidebar {
+  background: #191929;
+  border-right: 3px solid var(--ink);
+  box-shadow: none;
+}
+
+[data-theme='cartoon'] .logo {
+  font-size: 27px;
+  letter-spacing: 2px;
+  text-shadow: 3px 3px 0 var(--ink);
+}
+
+[data-theme='cartoon'] .logo-sub { font-weight: 700; }
+
+[data-theme='cartoon'] .nav-label { font-size: 15px; letter-spacing: 1.5px; }
+
+[data-theme='cartoon'] .sidebar-foot { border-top: 2px dashed rgb(255 255 255 / 0.15); }
+
+[data-theme='cartoon'] .status-row { font-weight: 700; }
+
+[data-theme='cartoon'] .dot { box-shadow: none; }

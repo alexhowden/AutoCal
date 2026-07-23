@@ -51,6 +51,19 @@
 
 .forge-shell.fit { width: 100%; height: 100%; }
 
+:is(.forge-stripes, .forge-stripes-v, .forge-stripes-b) svg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: block;
+  overflow: visible;
+}
+
+/* wires are span containers now (svg + pip element share a coordinate space) */
+:is(.forge-wire, .forge-wire2, .forge-wire3) { display: block; line-height: 0; }
+
+:is(.forge-wire, .forge-wire2, .forge-wire3) svg { display: block; }
+
 .shell-scalebox { position: relative; overflow: visible; }
 
 .shell-scaler {

@@ -20,6 +20,7 @@ const fxItems = [
   { key: 'embers', label: 'embers' },
   { key: 'sweep', label: 'sweep beam' },
   { key: 'tabPulse', label: 'tab pulse loop' },
+  { key: 'gaugeMotion', label: 'gauge motion' },
 ]
 
 function SwatchPicker({ colorId, onPick }) {
@@ -289,6 +290,17 @@ export default function Settings() {
         <Panel title="Preferences">
           <div className="setting-row">
             <div>
+              <div className="setting-name">Theme</div>
+              <div className="setting-desc">full visual restyle - dashboard leads, other pages catch up</div>
+            </div>
+            <CyberSelect
+              options={['cyberpunk', 'cartoon', 'motorsport', 'terminal']}
+              value={fx.theme || 'cyberpunk'}
+              onChange={(v) => setFx('theme', v)}
+            />
+          </div>
+          <div className="setting-row">
+            <div>
               <div className="setting-name">Launch at login</div>
               <div className="setting-desc">start AutoCal in the menu bar when you log in</div>
             </div>
@@ -318,6 +330,13 @@ export default function Settings() {
               <div className="setting-desc">toggle each background animation on its own</div>
             </div>
             <FxDropdown />
+          </div>
+          <div className="setting-row">
+            <div>
+              <div className="setting-name">Background motion</div>
+              <div className="setting-desc">keep animations running while the window is unfocused</div>
+            </div>
+            <Toggle on={fx.bgMotion} onChange={(v) => setFx('bgMotion', v)} />
           </div>
           <div className="setting-row">
             <div>

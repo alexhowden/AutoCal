@@ -62,17 +62,19 @@
   3.4%, 100% { transform: none; filter: none; }
 }
 
-:is(.flare-combo, .flare-combo2) :is(.forge-stripes, .forge-stripes-v, .forge-stripes-b) path {
+/* the fade lives on the per-stripe svg elements (HTML-level, GPU composited) -
+   animating paths inside one svg forced a full repaint every frame */
+:is(.flare-combo, .flare-combo2) :is(.forge-stripes, .forge-stripes-v, .forge-stripes-b) svg {
   animation: fstin 6s infinite;
 }
 
-:is(.flare-combo, .flare-combo2) :is(.forge-stripes, .forge-stripes-v, .forge-stripes-b) path:nth-child(1) { animation-delay: 0.4s; }
-:is(.flare-combo, .flare-combo2) :is(.forge-stripes, .forge-stripes-v, .forge-stripes-b) path:nth-child(2) { animation-delay: 0.46s; }
-:is(.flare-combo, .flare-combo2) :is(.forge-stripes, .forge-stripes-v, .forge-stripes-b) path:nth-child(3) { animation-delay: 0.52s; }
-:is(.flare-combo, .flare-combo2) :is(.forge-stripes, .forge-stripes-v, .forge-stripes-b) path:nth-child(4) { animation-delay: 0.58s; }
-:is(.flare-combo, .flare-combo2) :is(.forge-stripes, .forge-stripes-v, .forge-stripes-b) path:nth-child(5) { animation-delay: 0.64s; }
-:is(.flare-combo, .flare-combo2) :is(.forge-stripes, .forge-stripes-v, .forge-stripes-b) path:nth-child(6) { animation-delay: 0.7s; }
-:is(.flare-combo, .flare-combo2) :is(.forge-stripes, .forge-stripes-v, .forge-stripes-b) path:nth-child(7) { animation-delay: 0.76s; }
+:is(.flare-combo, .flare-combo2) :is(.forge-stripes, .forge-stripes-v, .forge-stripes-b) svg:nth-child(1) { animation-delay: 0.4s; }
+:is(.flare-combo, .flare-combo2) :is(.forge-stripes, .forge-stripes-v, .forge-stripes-b) svg:nth-child(2) { animation-delay: 0.46s; }
+:is(.flare-combo, .flare-combo2) :is(.forge-stripes, .forge-stripes-v, .forge-stripes-b) svg:nth-child(3) { animation-delay: 0.52s; }
+:is(.flare-combo, .flare-combo2) :is(.forge-stripes, .forge-stripes-v, .forge-stripes-b) svg:nth-child(4) { animation-delay: 0.58s; }
+:is(.flare-combo, .flare-combo2) :is(.forge-stripes, .forge-stripes-v, .forge-stripes-b) svg:nth-child(5) { animation-delay: 0.64s; }
+:is(.flare-combo, .flare-combo2) :is(.forge-stripes, .forge-stripes-v, .forge-stripes-b) svg:nth-child(6) { animation-delay: 0.7s; }
+:is(.flare-combo, .flare-combo2) :is(.forge-stripes, .forge-stripes-v, .forge-stripes-b) svg:nth-child(7) { animation-delay: 0.76s; }
 
 @keyframes fstin {
   0% { opacity: 0; }
@@ -108,57 +110,31 @@
   opacity: 1;
 }
 
-.fpip {
-  stroke: #ffffff;
-  stroke-dasharray: 14 400;
-  animation: fcpipa 6s linear infinite;
+/* wire pips: HTML dashes tracing the wire via precomputed transform keyframes
+   (injected by Shell.jsx) - the old stroke-dashoffset version ticked the main
+   thread every frame because SVG-internal animation can't be GPU-offloaded */
+.wire-pip {
+  position: absolute;
+  left: -7px;
+  top: -1.5px;
+  width: 14px;
+  height: 3px;
+  border-radius: 1.5px;
+  background: #ffffff;
+  opacity: 0;
+  will-change: transform, opacity;
+  animation: pip-w2a 6s linear infinite;
 }
 
-@keyframes fcpipa {
-  0% { stroke-dashoffset: 414; opacity: 0; }
-  14.2% { stroke-dashoffset: 414; opacity: 0; }
-  14.3% { stroke-dashoffset: 414; opacity: 1; }
-  28.6% { stroke-dashoffset: 254; opacity: 1; }
-  29.6% { stroke-dashoffset: 254; opacity: 0; }
-  100% { stroke-dashoffset: 254; opacity: 0; }
-}
-
-.fpipb {
-  stroke: #ffffff;
-  stroke-dasharray: 14 400;
-  animation: fcpipb 6s linear infinite;
-}
-
-@keyframes fcpipb {
-  0% { stroke-dashoffset: 414; opacity: 0; }
-  28.5% { stroke-dashoffset: 414; opacity: 0; }
-  28.6% { stroke-dashoffset: 414; opacity: 1; }
-  44.3% { stroke-dashoffset: 224; opacity: 1; }
-  45.3% { stroke-dashoffset: 224; opacity: 0; }
-  100% { stroke-dashoffset: 224; opacity: 0; }
-}
-
-.fpipc {
-  stroke: #ffffff;
-  stroke-dasharray: 14 400;
-  animation: fcpipc 6s linear infinite;
-}
-
-@keyframes fcpipc {
-  0% { stroke-dashoffset: 414; opacity: 0; }
-  44.2% { stroke-dashoffset: 414; opacity: 0; }
-  44.3% { stroke-dashoffset: 414; opacity: 1; }
-  58.6% { stroke-dashoffset: 254; opacity: 1; }
-  59.6% { stroke-dashoffset: 254; opacity: 0; }
-  100% { stroke-dashoffset: 254; opacity: 0; }
+.v-tab .wire-pip {
+  height: calc(1.5px / var(--shs, 1));
+  top: calc(-0.75px / var(--shs, 1));
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .fpip,
-  .fpipb,
-  .fpipc,
+  .wire-pip,
   .flare-combo2,
-  .flare-combo2 path { animation: none; }
+  .flare-combo2 svg { animation: none; }
 }
 
 .v-tab.flare-combo2 .forge-shell-in::after,

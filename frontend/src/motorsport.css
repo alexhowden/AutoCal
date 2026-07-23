@@ -1,0 +1,132 @@
+/* motorsport theme: carbon fiber, livery slashes, italic racing type,
+   amber pit-lane accents, checkered dividers. red stays the hero, cyan
+   remaps to shift-light amber. scoped under [data-theme='motorsport'];
+   theme.css stays the base. all decoration is static paint - no new
+   animations (see the webkit animation perf rules before adding any) */
+
+[data-theme='motorsport'] {
+  --bg-void: #0e0f12;
+  --bg-panel: #15161b;
+  --bg-raised: #1c1e24;
+  --bg-input: #121317;
+
+  --red: #ff1e3c;
+  --red-bright: #ff5468;
+  --red-dim: #93142c;
+  --red-line: rgb(255 30 60 / 0.45);
+  --red-ghost: rgb(255 30 60 / 0.07);
+
+  /* the accent channel becomes rev-limiter amber */
+  --cyan: #ffc400;
+  --cyan-data: #ffcf33;
+  --cyan-dim: #8f6f10;
+  --cyan-ghost: rgb(255 196 0 / 0.07);
+
+  --text-hi: #f4f6fb;
+  --text-mid: #d9dde6;
+  --text-low: #aab0bf;
+}
+
+/* ---------- canvas: asphalt with faint speed streaks ---------- */
+
+[data-theme='motorsport'] .bg-fx {
+  background: repeating-linear-gradient(115deg, rgb(255 255 255 / 0.014) 0 2px, transparent 2px 110px);
+}
+
+/* ---------- type: everything display goes italic ---------- */
+
+[data-theme='motorsport'] :is(.page-title, .np-title, .wp-title, .panel-title, .logo, .nav-label, .hbtn, .ret-val, .boost-val, .filter-chip, .sess-chip, .drop-overlay .big, .etitle) {
+  font-style: italic;
+}
+
+/* ---------- panels: carbon weave + livery slash kit ---------- */
+
+[data-theme='motorsport'] .np-in,
+[data-theme='motorsport'] .wp-in,
+[data-theme='motorsport'] .panel-body,
+[data-theme='motorsport'] .vp-in {
+  background:
+    linear-gradient(45deg, rgb(255 255 255 / 0.022) 25%, transparent 25% 75%, rgb(255 255 255 / 0.022) 75%) 0 0 / 6px 6px,
+    linear-gradient(45deg, rgb(255 255 255 / 0.022) 25%, transparent 25% 75%, rgb(255 255 255 / 0.022) 75%) 3px 3px / 6px 6px,
+    #15161b;
+}
+
+[data-theme='motorsport'] .np-in,
+[data-theme='motorsport'] .wp-in { position: relative; }
+
+/* two-tone livery slashes riding the top edge, clear of any header content */
+[data-theme='motorsport'] .np-in::after,
+[data-theme='motorsport'] .wp-in::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 26px;
+  width: 120px;
+  height: 8px;
+  background: linear-gradient(
+    -65deg,
+    transparent 12px,
+    var(--red) 12px 44px,
+    transparent 44px 52px,
+    rgb(255 255 255 / 0.9) 52px 64px,
+    transparent 64px 76px,
+    var(--red-dim) 76px 96px,
+    transparent 96px
+  );
+  pointer-events: none;
+}
+
+/* ---------- node line: finish-line checker ---------- */
+
+/* height matches the checker tile so the strip is exactly two rows of squares */
+[data-theme='motorsport'] .np-line .npl {
+  height: 8px;
+  background: repeating-conic-gradient(rgb(244 246 251 / 0.85) 0% 25%, rgb(14 15 18 / 0.95) 0% 50%) 0 0 / 8px 8px;
+  box-shadow: 0 0 0 1px rgb(255 255 255 / 0.14);
+}
+
+[data-theme='motorsport'] .np-line .npd { background: var(--red); }
+
+/* ---------- tags: skewed speed plates ---------- */
+
+[data-theme='motorsport'] .tag {
+  transform: skewX(-12deg);
+  font-weight: 600;
+}
+
+/* number-plate style: white plate, dark lettering */
+[data-theme='motorsport'] .tag.solid {
+  background: #f4f6fb;
+  border-color: #f4f6fb;
+  color: #0e0f12;
+}
+
+/* ---------- buttons: skewed pit-board switches ---------- */
+
+[data-theme='motorsport'] .hbtn {
+  transform: skewX(-12deg);
+  border: 1px solid var(--red-line);
+  background: linear-gradient(175deg, rgb(255 30 60 / 0.2), rgb(255 30 60 / 0.06));
+}
+
+[data-theme='motorsport'] .hbtn .hbk { display: none; }
+
+[data-theme='motorsport'] .hbtn:hover {
+  background: rgb(255 30 60 / 0.32);
+  border-color: var(--red);
+}
+
+[data-theme='motorsport'] .hbtn:active { transform: skewX(-12deg) translateY(1px); }
+
+[data-theme='motorsport'] .hbtn.primary {
+  background: linear-gradient(175deg, #ff3550, #d5122f);
+  border-color: var(--red-bright);
+}
+
+/* ---------- amber remaps for hardcoded cyan glows ---------- */
+
+[data-theme='motorsport'] .dot { box-shadow: 0 0 6px rgb(255 207 51 / 0.9); }
+
+[data-theme='motorsport'] .now-line .line { box-shadow: 0 0 6px rgb(255 207 51 / 0.8); }
+
+[data-theme='motorsport'] .checkbox.checked { box-shadow: 0 0 6px rgb(255 207 51 / 0.4); }
